@@ -1,8 +1,15 @@
-# Constella
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-512.png">
+    <img src="assets/logo-512-panel.png" alt="Constella logo" width="180">
+  </picture>
+</p>
 
-**Made by Zense.**
+<h1 align="center">Constella</h1>
 
-A modular Luau toolkit for Roblox. Use one utility on its own, or combine them into an explicit app with dependency-ordered services.
+<p align="center"><b>Made by Zense.</b><br>A modular Luau toolkit for Roblox.</p>
+
+Use one utility on its own, or combine them into an explicit app with dependency-ordered services.
 
 ```lua
 local Constella = require(game.ReplicatedStorage.Packages.Constella)
@@ -108,6 +115,7 @@ examples/               one zero-setup script per module
 tests/server/           Studio test suite (TestKit + *.spec modules) + integration tests (server halves)
 tests/client/           Network and Replication integration tests (client halves)
 docs/                   reference docs
+assets/                 logo (full size, 512 px, and a 512 px dark-panel version for light themes)
 default.project.json    package build (Wally / pesde / .rbxm)
 dev.project.json        full dev place: package + demo + examples + tests
 ```
