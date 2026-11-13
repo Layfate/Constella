@@ -67,17 +67,19 @@ local CALLBACK, SIGNAL, PREVIOUS, NEXT, ID = 1, 2, 3, 4, 5
 -- per call. A runner marks itself busy while a listener runs; if that
 -- listener yields, the next listener gets a fresh runner, so a yielding
 -- listener never blocks the others. Errors are caught per listener, so a
--- failing listener never kills its runner. A runner receives the connection
--- itself, so Fire passes one argument fewer and the error handler is only
--- looked up when a listener fails.
+-- failing listener never kills its runner.
+--
+-- Keep the (onError, callback, ...) argument layout. Passing the connection
+-- instead (one argument fewer) was tried: an idle runner then often kept the
+-- first Fire argument alive, which the runner-retention test catches.
 local freeRunner: thread? = nil
 
-local function runOnRunner(connection: any, ...: any)
+local function runOnRunner(onError: (string) -> (), callback: (...any) -> (), ...: any)
 	local runner = freeRunner
 	freeRunner = nil
-	local ok, message = xpcall(connection[CALLBACK], traceback, ...)
+	local ok, message = xpcall(callback :: any, traceback, ...)
 	if not ok then
-		connection[SIGNAL]._onError(message)
+		onError(message)
 	end
 	freeRunner = runner
 end
@@ -203,6 +205,7 @@ function SignalClass.Fire(self: any, ...: any)
 		return
 	end
 	local lastId = self._nextId - 1
+	local onError = self._onError
 	-- Dispatch is written out here (one call fewer per listener). A runner
 	-- clears freeRunner while its listener runs and restores it when the
 	-- listener returns, so a listener that yields makes the next one start
@@ -218,7 +221,7 @@ function SignalClass.Fire(self: any, ...: any)
 				if freeRunner == nil then
 					freeRunner = newRunner()
 				end
-				task.spawn(freeRunner :: thread, node, ...)
+				task.spawn(freeRunner :: thread, onError, node[CALLBACK], ...)
 			end
 		else
 			if id > lastId then
@@ -228,7 +231,7 @@ function SignalClass.Fire(self: any, ...: any)
 				if freeRunner == nil then
 					freeRunner = newRunner()
 				end
-				task.spawn(freeRunner :: thread, node, ...)
+				task.spawn(freeRunner :: thread, onError, node[CALLBACK], ...)
 			end
 		end
 		node = node[NEXT]

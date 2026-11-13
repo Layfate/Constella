@@ -216,24 +216,30 @@ return function(t, Constella)
 			-- Keep the current runner busy so the next Fire has to create a
 			-- fresh runner thread; that runner then stays alive as the free
 			-- runner. It must not pin the arguments of the call it started with.
-			local release = Signal.new()
-			local blocker = Signal.new()
-			blocker:Connect(function()
-				release:Wait()
-			end)
-			blocker:Fire()
+			-- Retention like this can be intermittent, so the check repeats.
+			local kept = 0
+			for _ = 1, 5 do
+				local release = Signal.new()
+				local blocker = Signal.new()
+				blocker:Connect(function()
+					release:Wait()
+				end)
+				blocker:Fire()
 
-			local signal = Signal.new()
-			signal:Connect(function() end)
-			local weak = setmetatable({}, { __mode = "k" })
-			do
-				local payload = {}
-				weak[payload] = true
-				signal:Fire(payload)
+				local signal = Signal.new()
+				signal:Connect(function() end)
+				local weak = setmetatable({}, { __mode = "k" })
+				do
+					local payload = {}
+					weak[payload] = true
+					signal:Fire(payload)
+				end
+				if not collected(weak, 3) then
+					kept += 1
+				end
+				release:Fire()
 			end
-			local freed = collected(weak)
-			release:Fire()
-			expect(freed).toBe(true)
+			expect(kept).toBe(0)
 		end)
 	end)
 end
