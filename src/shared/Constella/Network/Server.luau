@@ -152,12 +152,24 @@ local function admit(endpoint: any, player: any, ...: any): (boolean, RejectReas
 		reject(endpoint, player, "RateLimited", nil)
 		return false, "RateLimited"
 	end
-	local size, sizeReason = Payload.measure(endpoint._payloadLimits, ...)
+	local measured, size, sizeReason = pcall(Payload.measure, endpoint._payloadLimits, ...)
+	if not measured then
+		endpoint._server._onError(PREFIX .. ("Measuring a payload for '%s' failed: %s"):format(endpoint.Name, tostring(size)))
+		reject(endpoint, player, "PayloadTooLarge", "payload could not be measured")
+		return false, "PayloadTooLarge"
+	end
 	if size == nil then
 		reject(endpoint, player, "PayloadTooLarge", sizeReason)
 		return false, "PayloadTooLarge"
 	end
-	local valid, invalidReason = Check.arguments(schema, ...)
+	-- Validators are user code (custom functions, Check.refine predicates).
+	-- An error in one is a server bug: report it and reject the request.
+	local checked, valid, invalidReason = xpcall(Check.arguments, traceback, schema, ...)
+	if not checked then
+		endpoint._server._onError(PREFIX .. ("A Schema validator for '%s' raised an error: %s"):format(endpoint.Name, tostring(valid)))
+		reject(endpoint, player, "InvalidArguments", "a validator raised an error")
+		return false, "InvalidArguments"
+	end
 	if not valid then
 		reject(endpoint, player, "InvalidArguments", invalidReason)
 		return false, "InvalidArguments"
@@ -260,7 +272,13 @@ function ServerEventClass._receive(self: any, player: any, ...: any)
 	if self._destroyed then
 		return
 	end
-	if admit(self, player, ...) then
+	-- Nothing a client sends may raise an error out of here.
+	local ok, admitted = pcall(admit, self, player, ...)
+	if not ok then
+		self._server._onError(PREFIX .. ("Checking a request for '%s' failed: %s"):format(self.Name, tostring(admitted)))
+		return
+	end
+	if admitted then
 		self._signal:Fire(player, ...)
 	end
 end
@@ -320,7 +338,12 @@ function ServerFunctionClass._invoke(self: any, player: any, ...: any): ...any
 	if self._destroyed then
 		return false, "Unavailable"
 	end
-	local admitted, reason = admit(self, player, ...)
+	-- Nothing a client sends may raise an error back to the client.
+	local ok, admitted, reason = pcall(admit, self, player, ...)
+	if not ok then
+		self._server._onError(PREFIX .. ("Checking a request for '%s' failed: %s"):format(self.Name, tostring(admitted)))
+		return false, "Rejected"
+	end
 	if not admitted then
 		return false, if reason == "RateLimited" then "RateLimited" else "Rejected"
 	end

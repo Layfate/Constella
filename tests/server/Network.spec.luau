@@ -418,4 +418,91 @@ return function(t, Constella)
 			server:Destroy()
 		end)
 	end)
+
+	t.describe("review fixes", function()
+		t.it("rejects requests whose validator throws, without throwing", function()
+			local errors = {}
+			local server = newServer({
+				OnError = function(message)
+					table.insert(errors, message)
+				end,
+			})
+			local exploding = function()
+				error("validator bug")
+			end
+			local event = server:Event("Fragile", { Schema = { exploding }, RateLimit = false })
+			local refined = server:Event("Refined", {
+				Schema = {
+					Check.refine(Check.integer(), function()
+						error("predicate bug")
+					end),
+				},
+				RateLimit = false,
+			})
+			local fn = server:Function("FragileFn", { Schema = { exploding }, RateLimit = false })
+			fn:SetHandler(function()
+				return "should not run"
+			end)
+			local calls = 0
+			event:Connect(function()
+				calls += 1
+			end)
+
+			expect(function()
+				event:_receive(fakePlayer(), 1)
+				refined:_receive(fakePlayer(), 1)
+			end).toNotThrow()
+			local ok, code, leaked = fn:_invoke(fakePlayer(), 1)
+
+			expect(calls).toBe(0)
+			expect(ok).toBe(false)
+			expect(code).toBe("Rejected")
+			expect(leaked).toBeNil()
+			local stats = server:GetStats()
+			expect(stats.Fragile.Rejected.InvalidArguments).toBe(1)
+			expect(stats.Refined.Rejected.InvalidArguments).toBe(1)
+			expect(stats.FragileFn.Rejected.InvalidArguments).toBe(1)
+			expect(#errors).toBe(3)
+			server:Destroy()
+		end)
+
+		t.it("client Invoke times out and bounds calls that never return", function()
+			local neverReturns = {
+				InvokeServer = function()
+					coroutine.yield() -- like a server that never answers
+				end,
+			}
+			local fn = Network.Client._newFunction("Stuck", neverReturns, { Timeout = 0.05, MaxInFlight = 2 })
+			local ok1, code1 = fn:Invoke()
+			local ok2, code2 = fn:Invoke()
+			expect(ok1).toBe(false)
+			expect(code1).toBe("Timeout")
+			expect(code2).toBe("Timeout")
+			expect(fn:GetInFlight()).toBe(2)
+			-- The limit is reached: fail fast instead of piling up more threads.
+			local started = os.clock()
+			local ok3, code3 = fn:Invoke()
+			expect(ok3).toBe(false)
+			expect(code3).toBe("TooManyRequests")
+			expect(os.clock() - started < 0.04).toBe(true)
+		end)
+
+		t.it("client Invoke returns results and releases its slot", function()
+			local adds = {
+				InvokeServer = function(_, a, b)
+					task.wait()
+					return true, a + b
+				end,
+			}
+			local fn = Network.Client._newFunction("Add", adds, { Timeout = 2, MaxInFlight = 1 })
+			local ok, sum = fn:Invoke(2, 3)
+			expect(ok).toBe(true)
+			expect(sum).toBe(5)
+			expect(fn:GetInFlight()).toBe(0)
+			expect((fn:Invoke(1, 1))).toBe(true)
+			expect(function()
+				Network.Client._newFunction("Bad", adds, { MaxInFlight = 0 })
+			end).toThrow("MaxInFlight")
+		end)
+	end)
 end

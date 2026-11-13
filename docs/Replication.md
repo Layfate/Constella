@@ -22,7 +22,8 @@ end)
 - **Explicit authorization.** A value is only sent if the server called `Share` (for everyone) or `ShareWith(player, ...)` (for that player). A private share is never sent to, and never included in snapshots for, anyone else.
 - **One direction only.** The update channel is a Network event with no Schema, so anything a client fires at it is rejected. The only request a client can make is a snapshot fetch, which takes no arguments and is rate-limited.
 - **Value checks.** Functions, threads, userdata and tables with metatables are refused, and values over `MaxValueBytes` (16 KB by default) are refused too. These are reported on the server and never sent.
-- **Ordering.** Each share has a version number, so a snapshot that arrives late can never overwrite a newer update.
+- **Ordering.** Versions come from one counter per replicator that only ever goes up. A snapshot that arrives late can never overwrite a newer update. A share that's stopped and recreated under the same name always continues above every version a client has already seen.
+- **Snapshots only contain validated values.** If an update is rejected (unsupported or too large), it's reported on the server, and both live updates and snapshots keep serving the last value that passed validation.
 - On the client, values are **read-only** states. The server stays the source of truth.
 
 ## API

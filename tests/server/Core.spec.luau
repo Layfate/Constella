@@ -286,4 +286,84 @@ return function(t, Constella)
 			end).toThrow("failed to start")
 		end)
 	end)
+
+	t.describe("WaitForStart", function()
+		t.it("waits for a yielding Start before later Starts and Running", function()
+			local log = {}
+			local app = newApp()
+			app:Add({
+				Name = "Database",
+				WaitForStart = true,
+				Start = function()
+					task.wait(0.05)
+					table.insert(log, "database ready")
+				end,
+			})
+			app:Add({
+				Name = "Shop",
+				Dependencies = { "Database" },
+				Start = function()
+					table.insert(log, "shop start")
+				end,
+			})
+			app:Start()
+			expect(log).toEqual({ "database ready", "shop start" })
+			expect(app:GetState()).toBe("Running")
+		end)
+
+		t.it("fails startup and rolls back when Start errors after yielding", function()
+			local log = {}
+			local reported = {}
+			local app = newApp({
+				OnError = function(message)
+					table.insert(reported, message)
+				end,
+			})
+			app:Add(tracked(log, "A"))
+			app:Add(tracked(log, "Critical", { "A" }, {
+				WaitForStart = true,
+				Start = function()
+					task.wait()
+					error("connection refused")
+				end,
+			}))
+			expect(function()
+				app:Start()
+			end).toThrow("connection refused")
+			expect(app:GetState()).toBe("Failed")
+			expect(log).toEqual({ "init:A", "init:Critical", "start:A", "stop:Critical", "stop:A" })
+			expect(#reported).toBe(0)
+		end)
+
+		t.it("fails startup when Start exceeds StartTimeout and stops the stuck Start", function()
+			local log = {}
+			local finished = false
+			local app = newApp()
+			app:Add(tracked(log, "Slow", nil, {
+				WaitForStart = true,
+				StartTimeout = 0.05,
+				Start = function()
+					task.wait(5)
+					finished = true
+				end,
+			}))
+			expect(function()
+				app:Start()
+			end).toThrow("did not finish within 0.05 seconds")
+			expect(app:GetState()).toBe("Failed")
+			expect(log).toEqual({ "init:Slow", "stop:Slow" })
+			task.wait(0.1)
+			expect(finished).toBe(false)
+		end)
+
+		t.it("validates WaitForStart and StartTimeout", function()
+			local app = newApp()
+			expect(function()
+				app:Add({ Name = "X", WaitForStart = "yes" })
+			end).toThrow("WaitForStart must be a boolean")
+			expect(function()
+				app:Add({ Name = "Y", StartTimeout = -1 })
+			end).toThrow("StartTimeout must be a positive number")
+		end)
+	end)
 end

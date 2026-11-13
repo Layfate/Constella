@@ -21,6 +21,11 @@
 	               on its own thread. An error raised before Start first
 	               yields fails startup; an error after a yield is reported
 	               through OnError and the app keeps running.
+	             - A definition with WaitForStart = true is a readiness
+	               gate: Start (yields included) must finish before later
+	               definitions start and before the app is Running. An
+	               error at any point, or running past StartTimeout
+	               (default 30s), fails startup. App:Start then yields.
 	             - If startup fails, Stop runs (reverse order) for every
 	               definition whose Init completed, their Cleanup is
 	               destroyed and Start raises the error. The app is then
@@ -55,6 +60,11 @@ export type Definition = {
 	Init: ((self: any, context: Context) -> ())?,
 	Start: ((self: any, context: Context) -> ())?,
 	Stop: ((self: any, context: Context) -> ())?,
+	--- Make App:Start wait for this definition's Start to finish (even if it
+	--- yields). Any Start error then fails startup. Defaults to false.
+	WaitForStart: boolean?,
+	--- Seconds a WaitForStart definition may take. Defaults to 30.
+	StartTimeout: number?,
 	[string]: any,
 }
 
@@ -90,6 +100,7 @@ export type App = {
 
 local PREFIX = "[Constella.App] "
 local LIFECYCLE_METHODS = { "Init", "Start", "Stop" }
+local DEFAULT_START_TIMEOUT = 30
 
 local function traceback(err: any): string
 	return debug.traceback(tostring(err), 2)
@@ -141,6 +152,17 @@ local function validateDefinition(app: any, definition: any, source: string?, le
 		if value ~= nil and type(value) ~= "function" then
 			error(PREFIX .. ("'%s'.%s must be a function, got %s"):format(name, method, typeof(value)), level)
 		end
+	end
+
+	if definition.WaitForStart ~= nil and type(definition.WaitForStart) ~= "boolean" then
+		error(PREFIX .. ("'%s'.WaitForStart must be a boolean"):format(name), level)
+	end
+	local startTimeout = definition.StartTimeout
+	if
+		startTimeout ~= nil
+		and (type(startTimeout) ~= "number" or not (startTimeout > 0) or startTimeout == math.huge)
+	then
+		error(PREFIX .. ("'%s'.StartTimeout must be a positive number of seconds"):format(name), level)
 	end
 
 	local environment = definition.Environment
@@ -388,22 +410,59 @@ function AppClass.Start(self: any)
 	for _, definition in order do
 		if definition.Start then
 			local context = self._contexts[definition.Name]
-			local synchronous = true
-			local syncError: string? = nil
-			task.spawn(function()
+			local waits = definition.WaitForStart == true
+
+			-- "Settled" means startup no longer waits on this definition: its
+			-- Start returned, failed, timed out, or (without WaitForStart)
+			-- yielded. Errors raised after settling go to OnError.
+			local settled = false
+			local failure: string? = nil
+			local waiter: thread? = nil
+			local function settle(err: string?): boolean
+				if settled then
+					return false
+				end
+				settled = true
+				failure = err
+				if waiter then
+					task.spawn(waiter)
+				end
+				return true
+			end
+
+			local startThread = task.spawn(function()
 				local ok, err = xpcall(definition.Start, traceback, definition, context)
-				if not ok then
-					if synchronous then
-						syncError = err
-					else
-						self._onError(PREFIX .. ("Start for '%s' failed after yielding: %s"):format(definition.Name, err))
-					end
+				if not settle(if ok then nil else err) and not ok then
+					self._onError(PREFIX .. ("Start for '%s' failed after yielding: %s"):format(definition.Name, err))
 				end
 			end)
-			synchronous = false
-			if syncError then
+
+			if not settled then
+				if waits then
+					local timeout = definition.StartTimeout or DEFAULT_START_TIMEOUT
+					local timer = task.delay(timeout, function()
+						if settled then
+							return
+						end
+						-- Cancel the stuck Start before rolling back, so it can't
+						-- keep running while its Stop and Cleanup execute.
+						if coroutine.status(startThread) == "suspended" then
+							pcall(task.cancel, startThread)
+						end
+						settle(("did not finish within %s seconds"):format(tostring(timeout)))
+					end)
+					waiter = coroutine.running()
+					coroutine.yield()
+					waiter = nil
+					pcall(task.cancel, timer)
+				else
+					settle(nil)
+				end
+			end
+
+			if failure then
 				local stopErrors = teardown(self, initialized)
-				local message = PREFIX .. ("Start failed for '%s': %s"):format(definition.Name, syncError)
+				local message = PREFIX .. ("Start failed for '%s': %s"):format(definition.Name, failure)
 				if #stopErrors > 0 then
 					message ..= "\nWhile rolling back:\n" .. table.concat(stopErrors, "\n")
 				end

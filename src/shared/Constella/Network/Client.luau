@@ -7,6 +7,13 @@
 
 	Functions never hang: Invoke returns (false, "Timeout") after the
 	configured timeout, and (false, code) when the server rejected the call.
+
+	A timed-out InvokeServer cannot be cancelled from Luau (the engine owns
+	that yield), so its thread stays suspended until the server answers or
+	the client leaves. To keep that bounded, each function allows at most
+	MaxInFlight calls (default 8) to be outstanding, counting timed-out ones
+	that have not come back yet. Beyond that, Invoke returns
+	(false, "TooManyRequests") immediately without contacting the server.
 	Treat everything coming back from the server as display data; the server
 	is the source of truth.
 ]=]
@@ -31,20 +38,32 @@ export type ClientEvent = {
 export type ClientFunction = {
 	Name: string,
 	--- Returns (true, ...results) or (false, code). Codes: "Timeout",
-	--- "RateLimited", "Rejected", "Unavailable", "ServerError", "NetworkError".
+	--- "TooManyRequests", "RateLimited", "Rejected", "Unavailable",
+	--- "ServerError", "NetworkError".
 	Invoke: (self: any, ...any) -> (boolean, ...any),
+	--- Calls that have not returned from the server yet (including timed-out ones).
+	GetInFlight: (self: any) -> number,
+}
+
+export type FunctionOptions = {
+	--- Seconds before Invoke gives up. Defaults to 10.
+	Timeout: number?,
+	--- Maximum outstanding calls, including timed-out ones that have not
+	--- returned yet. Defaults to 8.
+	MaxInFlight: number?,
 }
 
 export type Client = {
 	Namespace: string,
 	Event: (self: any, name: string) -> ClientEvent,
-	Function: (self: any, name: string, options: { Timeout: number? }?) -> ClientFunction,
+	Function: (self: any, name: string, options: FunctionOptions?) -> ClientFunction,
 	Destroy: (self: any) -> (),
 }
 
 local PREFIX = "[Constella.Network] "
 local ROOT_FOLDER_NAME = "ConstellaRemotes"
 local DEFAULT_TIMEOUT = 10
+local DEFAULT_MAX_IN_FLIGHT = 8
 
 local function checkTimeout(value: any, level: number): number
 	if value == nil then
@@ -94,6 +113,11 @@ local ClientFunctionClass = {}
 ClientFunctionClass.__index = ClientFunctionClass
 
 function ClientFunctionClass.Invoke(self: any, ...: any): (boolean, ...any)
+	if self._inFlight >= self._maxInFlight then
+		return false, "TooManyRequests"
+	end
+	self._inFlight += 1
+
 	local thread = coroutine.running()
 	local finished = false
 	local remote = self._remote
@@ -102,6 +126,8 @@ function ClientFunctionClass.Invoke(self: any, ...: any): (boolean, ...any)
 	-- Deferred so both callbacks can only resume this thread after it yields.
 	task.defer(function()
 		local results = table.pack(pcall(remote.InvokeServer, remote, table.unpack(args, 1, args.n)))
+		-- The call is no longer outstanding, whether or not the caller timed out.
+		self._inFlight -= 1
 		if finished then
 			return
 		end
@@ -133,6 +159,26 @@ function ClientFunctionClass.Invoke(self: any, ...: any): (boolean, ...any)
 	return false, "NetworkError"
 end
 
+function ClientFunctionClass.GetInFlight(self: any): number
+	return self._inFlight
+end
+
+local function newFunction(name: string, remote: any, options: FunctionOptions?, level: number): ClientFunction
+	local timeout = checkTimeout(if options then options.Timeout else nil, level + 1)
+	local maxInFlight = if options and options.MaxInFlight ~= nil then options.MaxInFlight else DEFAULT_MAX_IN_FLIGHT
+	if type(maxInFlight) ~= "number" or maxInFlight < 1 or maxInFlight % 1 ~= 0 or maxInFlight == math.huge then
+		error(PREFIX .. "MaxInFlight must be a positive integer", level)
+	end
+	local fn = setmetatable({
+		Name = name,
+		_remote = remote,
+		_timeout = timeout,
+		_maxInFlight = maxInFlight,
+		_inFlight = 0,
+	}, ClientFunctionClass)
+	return (fn :: any) :: ClientFunction
+end
+
 local ClientClass = {}
 ClientClass.__index = ClientClass
 
@@ -146,14 +192,12 @@ function ClientClass.Event(self: any, name: string): ClientEvent
 	return (event :: any) :: ClientEvent
 end
 
-function ClientClass.Function(self: any, name: string, options: { Timeout: number? }?): ClientFunction
-	local timeout = checkTimeout(if options then options.Timeout else nil, 3)
+function ClientClass.Function(self: any, name: string, options: FunctionOptions?): ClientFunction
 	local remote = waitFor(self._folder, name, self._timeout, "Remote")
 	if not remote:IsA("RemoteFunction") then
 		error(PREFIX .. ("'%s' is a %s, not a function"):format(name, remote.ClassName), 2)
 	end
-	local fn = setmetatable({ Name = name, _remote = remote, _timeout = timeout }, ClientFunctionClass)
-	return (fn :: any) :: ClientFunction
+	return newFunction(name, remote, options, 3)
 end
 
 --- Disconnects every handler connected through this client.
@@ -184,6 +228,12 @@ function Client.new(namespace: string, options: ClientOptions?): Client
 		_events = {},
 	}, ClientClass)
 	return (self :: any) :: Client
+end
+
+--- Internal: wraps any object with an InvokeServer method. Used by tests to
+--- exercise timeouts and the in-flight limit without a running client.
+function Client._newFunction(name: string, remote: any, options: FunctionOptions?): ClientFunction
+	return newFunction(name, remote, options, 3)
 end
 
 return table.freeze(Client)

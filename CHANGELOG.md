@@ -2,6 +2,19 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
+## Unreleased
+
+Fixes from a code review. Each one has a regression test that fails on 0.1.0.
+
+### Fixed
+- **Replication:** a share that was stopped and recreated under the same name restarted its version at 1, so clients could discard its updates as stale. Versions now come from one counter per replicator that only ever increases.
+- **Replication:** snapshots read the live state, so a value rejected as an update (unsupported or oversized) could still be served by a later snapshot. Shares now cache the last value that passed validation, and the initial value gets the full size check at `Share` time.
+- **Network:** an error inside a Schema validator (for example a `Check.refine` predicate) wasn't caught. For a RemoteFunction, that could send the server's error text to the client. Validation and payload measurement now run in protected calls: errors go to `OnError` and the request is rejected as `InvalidArguments`. Both entry points also guard the whole check sequence.
+
+### Added
+- **Network:** `MaxInFlight` on client functions (default 8) bounds outstanding `InvokeServer` calls, counting timed-out ones that haven't returned. Beyond it, `Invoke` fails fast with `"TooManyRequests"`. Also adds `fn:GetInFlight()`.
+- **Core:** `WaitForStart` and `StartTimeout` let critical services act as a readiness gate. `App:Start` waits for their `Start` to finish, and any error or timeout fails startup with a rollback.
+
 ## 0.1.0 — 2026-11-13
 
 First release, made by Zense. Every module listed in the roadmap is included. `Data` is marked beta.
