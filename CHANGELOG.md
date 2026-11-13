@@ -2,15 +2,18 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
-## Unreleased
+## 0.2.0 — 2026-11-14
 
-Fixes from two code reviews, plus verification and performance work. Each fix has a regression test.
+Verification and performance release: fixes from two code reviews (each with a regression test), Data verified against real ProfileStore, a faster Signal, a benchmark suite, and CI. No modules or public functions were removed.
+
+### Upgrading from 0.1.0
+- **Data:** with ProfileStore, `profile:Save()`, `store:Release()` and `store:Shutdown()` now yield until ProfileStore has finished writing, for up to `SaveTimeout` (30 seconds by default). Code that called them expecting an immediate return now waits for the real save.
+- **Network:** a client function allows at most 8 outstanding `Invoke` calls by default. Further calls fail fast with `"TooManyRequests"` instead of piling up threads. Raise `MaxInFlight` if you need more.
 
 ### Fixed
 - **Replication:** a share that was stopped and recreated under the same name restarted its version at 1, so clients could discard its updates as stale. Versions now come from one counter per replicator that only ever increases.
 - **Replication:** snapshots read the live state, so a value rejected as an update (unsupported or oversized) could still be served by a later snapshot. Shares now cache the last value that passed validation, and the initial value gets the full size check at `Share` time.
 - **Network:** an error inside a Schema validator (for example a `Check.refine` predicate) wasn't caught. For a RemoteFunction, that could send the server's error text to the client. Validation and payload measurement now run in protected calls: errors go to `OnError` and the request is rejected as `InvalidArguments`. Both entry points also guard the whole check sequence.
-
 - **Data:** with ProfileStore, `profile:Save()`, `store:Release()` and `store:Shutdown()` returned before anything was written, because ProfileStore saves on a separate thread and fires `OnSessionEnd` before its final write. The adapter now waits for ProfileStore's `OnAfterSave`, capped by a new `SaveTimeout` option (30 seconds by default).
 
 ### Changed
