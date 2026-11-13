@@ -68,8 +68,11 @@ local function runOnRunner(onError: (string) -> (), callback: (...any) -> (), ..
 	freeRunner = runner
 end
 
-local function runnerLoop(...: any)
-	runOnRunner(...)
+-- The loop takes no arguments and starts by yielding, so a runner never
+-- keeps a call's callback or arguments alive between calls. (Entering the
+-- loop with the first call's arguments would pin them on its stack frame
+-- for as long as the runner exists.)
+local function runnerLoop()
 	while true do
 		runOnRunner(coroutine.yield())
 	end
@@ -77,15 +80,25 @@ end
 
 local function dispatch(onError: (string) -> (), callback: (...any) -> (), ...: any)
 	if freeRunner == nil then
-		freeRunner = coroutine.create(runnerLoop)
+		local runner = coroutine.create(runnerLoop)
+		coroutine.resume(runner) -- run to the first yield
+		freeRunner = runner
 	end
 	task.spawn(freeRunner :: thread, onError, callback, ...)
 end
 
--- Connections form a doubly linked list in connection order. Each has an
--- increasing id; Fire only visits ids that existed when it started, which
--- gives snapshot semantics without copying the list. A disconnected node
--- keeps its _next pointer, so a Fire that is walking past it carries on.
+-- Connections form a doubly linked list in connection order.
+--
+-- Layout: internal fields live in the table's array part, which Luau stores
+-- compactly; only the public `Connected` field uses the hash part.
+--   [1] callback   [2] signal   [3] previous (or false)   [4] next (or false)
+--   [5] id: increases with every Connect; negative for Once connections
+--
+-- Fire only visits ids that existed when it started, which gives snapshot
+-- semantics without copying the list. A disconnected node keeps its next
+-- pointer, so a Fire that is walking past it carries on.
+local CALLBACK, SIGNAL, PREVIOUS, NEXT, ID = 1, 2, 3, 4, 5
+
 local ConnectionClass = {}
 ConnectionClass.__index = ConnectionClass
 
@@ -94,17 +107,17 @@ function ConnectionClass.Disconnect(self: any)
 		return
 	end
 	self.Connected = false
-	local signal = self._signal
-	local previous, following = self._prev, self._next
+	local signal = self[SIGNAL]
+	local previous, following = self[PREVIOUS], self[NEXT]
 	if previous then
-		previous._next = following
+		previous[NEXT] = following
 	else
-		signal._head = following
+		signal._head = following or nil
 	end
 	if following then
-		following._prev = previous
+		following[PREVIOUS] = previous
 	else
-		signal._tail = previous
+		signal._tail = previous or nil
 	end
 	signal._count -= 1
 end
@@ -113,7 +126,7 @@ ConnectionClass.Destroy = ConnectionClass.Disconnect
 local SignalClass = {}
 SignalClass.__index = SignalClass
 
-local function connect(self: any, callback: any, once: boolean, method: string): Connection
+local function append(self: any, callback: any, once: boolean, method: string): any
 	if self._destroyed then
 		error(("[Constella.Signal] Cannot %s a destroyed Signal"):format(method), 3)
 	end
@@ -124,35 +137,34 @@ local function connect(self: any, callback: any, once: boolean, method: string):
 	self._nextId = id + 1
 	local tail = self._tail
 	local connection = setmetatable({
+		callback,
+		self,
+		tail or false,
+		false,
+		if once then -id else id,
 		Connected = true,
-		_signal = self,
-		_callback = callback,
-		_once = once,
-		_id = id,
-		_prev = tail,
-		_next = nil,
 	}, ConnectionClass)
 	if tail then
-		tail._next = connection
+		tail[NEXT] = connection
 	else
 		self._head = connection
 	end
 	self._tail = connection
 	self._count += 1
-	return connection :: any
+	return connection
 end
 
 function SignalClass.Connect(self: any, callback: (...any) -> ()): Connection
-	return connect(self, callback, false, "Connect")
+	return append(self, callback, false, "Connect")
 end
 
 function SignalClass.Once(self: any, callback: (...any) -> ()): Connection
-	return connect(self, callback, true, "Once")
+	return append(self, callback, true, "Once")
 end
 
 function SignalClass.Wait(self: any): ...any
 	local thread = coroutine.running()
-	connect(self, function(...)
+	append(self, function(...)
 		task.spawn(thread, ...)
 	end, true, "Wait on")
 	return coroutine.yield()
@@ -163,27 +175,32 @@ function SignalClass.Fire(self: any, ...: any)
 		return
 	end
 	local node = self._head
-	if node == nil then
+	if not node then
 		return
 	end
 	local lastId = self._nextId - 1
 	local onError = self._onError
-	while node ~= nil and node._id <= lastId do
+	while node do
+		local id = node[ID]
+		local once = id < 0
+		if (if once then -id else id) > lastId then
+			break
+		end
 		if node.Connected then
-			if node._once then
+			if once then
 				node:Disconnect()
 			end
-			dispatch(onError, node._callback, ...)
+			dispatch(onError, node[CALLBACK], ...)
 		end
-		node = node._next
+		node = node[NEXT]
 	end
 end
 
 function SignalClass.DisconnectAll(self: any)
 	local node = self._head
-	while node ~= nil do
+	while node do
 		node.Connected = false
-		node = node._next
+		node = node[NEXT]
 	end
 	self._head = nil
 	self._tail = nil

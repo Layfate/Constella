@@ -244,4 +244,95 @@ return function(t, Constella)
 			end
 		end)
 	end)
+
+	-- Live DataStores ---------------------------------------------------------
+	-- Runs only where ProfileStore has real DataStore access: a PUBLISHED
+	-- place with "Enable Studio Access to API Services" turned on. Each run
+	-- uses a fresh throwaway DataStore name and removes its keys afterwards,
+	-- so it never touches real player data. Use a separate test place.
+	t.describe("live DataStores", function()
+		local deadline = os.clock() + 15
+		while ProfileStore.DataStoreState == "NotReady" and os.clock() < deadline do
+			task.wait()
+		end
+		if ProfileStore.DataStoreState ~= "Access" then
+			t.skip(
+				"live DataStore tests",
+				("DataStoreState is %s; publish a test place and enable Studio access to API services"):format(
+					tostring(ProfileStore.DataStoreState)
+				)
+			)
+			return
+		end
+
+		local liveName = "ConstellaLive_" .. string.sub(HttpService:GenerateGUID(false), 1, 8)
+		local usedKeys = {}
+		local function liveStore()
+			local errors = {}
+			local store = Store.new({
+				Name = liveName,
+				Template = { Coins = 0 },
+				Adapter = Data.ProfileStoreAdapter.new(ProfileStore, { SaveTimeout = 30 }),
+				LoadAttempts = 2,
+				RetryDelay = 1,
+				OnError = function(message)
+					table.insert(errors, message)
+				end,
+			})
+			return store, errors
+		end
+		local function liveStored(key)
+			local view = ProfileStore.New(liveName):GetAsync(key)
+			return if view then view.Data else nil
+		end
+
+		t.it("saves to a real DataStore before Release returns", function()
+			local store, errors = liveStore()
+			local player = fakePlayer()
+			table.insert(usedKeys, keyOf(player))
+			local ok, profile = store:LoadAsync(player):Await()
+			expect(ok).toBe(true)
+			profile:Set("Coins", 321)
+			store:Release(player)
+			expect(liveStored(keyOf(player)).Coins).toBe(321)
+			expect(#errors).toBe(0)
+		end)
+
+		t.it("loads the saved data in a new session", function()
+			local store = liveStore()
+			local player = fakePlayer()
+			table.insert(usedKeys, keyOf(player))
+			local _, first = store:LoadAsync(player):Await()
+			first:Set("Coins", 55)
+			store:Release(player)
+			local rejoined = fakePlayer(player.UserId)
+			local ok, second = store:LoadAsync(rejoined):Await()
+			expect(ok).toBe(true)
+			expect(second.Data.Coins).toBe(55)
+			store:Release(rejoined)
+		end)
+
+		t.it("Shutdown writes every profile within its budget", function()
+			local store = liveStore()
+			local players = { fakePlayer(), fakePlayer() }
+			for index, player in players do
+				table.insert(usedKeys, keyOf(player))
+				local _, profile = store:LoadAsync(player):Await()
+				profile:Set("Coins", index)
+			end
+			expect(store:Shutdown(30)).toBe(true)
+			for index, player in players do
+				expect(liveStored(keyOf(player)).Coins).toBe(index)
+			end
+		end)
+
+		t.it("removes the throwaway test keys", function()
+			for _, key in usedKeys do
+				ProfileStore.New(liveName):RemoveAsync(key)
+			end
+			for _, key in usedKeys do
+				expect(liveStored(key)).toBeNil()
+			end
+		end)
+	end)
 end
