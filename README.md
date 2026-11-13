@@ -13,6 +13,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Layfate/Constella/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Layfate/Constella/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7c6cf0"></a>
   <a href="CHANGELOG.md"><img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-4fb4f0"></a>
   <img alt="Luau: strict" src="https://img.shields.io/badge/luau-strict-5b7cfa">
@@ -198,11 +199,11 @@ rojo build default.project.json -o Constella.rbxm
 ```bash
 rokit install                  # rojo, wally, selene, stylua
 rojo serve dev.project.json    # dev place: package, demo, examples and tests
-selene src tests examples      # lint
-stylua src tests examples      # format
+selene src tests examples benchmarks     # lint
+stylua src tests examples benchmarks     # format
 ```
 
-Press **Play** in the dev place to run the full test suite and both integration tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for how tests are structured and what a pull request needs.
+Press **Play** in the dev place to run the full test suite and both integration tests. On every push and pull request, GitHub Actions checks formatting (StyLua), lint (selene) and strict Roblox types (luau-lsp). The test suite itself still runs in Studio. See [CONTRIBUTING.md](CONTRIBUTING.md) for how tests are structured and what a pull request needs.
 
 ## License
 

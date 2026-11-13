@@ -62,12 +62,23 @@ print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)())
 
 Run this in the Studio command bar (Edit mode). To compare with other libraries, add `Signal` (sleitnick/signal) and `Trove` (sleitnick/trove) ModuleScripts to `ServerStorage.BenchmarkLibs`. If you change a hot path, re-run the benchmarks and update [docs/Benchmarks.md](docs/Benchmarks.md).
 
-## Lint and format
+## Lint, format and type check
 
 ```bash
-selene src tests examples
-stylua src tests examples      # add --check to verify without changing files
+selene src tests examples benchmarks
+stylua src tests examples benchmarks     # add --check to verify without changing files
 ```
+
+Type checking uses [luau-lsp](https://github.com/JohnnyMorganz/luau-lsp) with Roblox definitions and a Rojo sourcemap:
+
+```bash
+rojo sourcemap dev.project.json --output sourcemap.json
+luau-lsp analyze --platform=roblox --sourcemap=sourcemap.json \
+  --definitions=@roblox=globalTypes.d.luau --base-luaurc=.luaurc \
+  src tests examples benchmarks
+```
+
+`globalTypes.d.luau` comes from the luau-lsp repository, at the version pinned in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). GitHub Actions runs all three checks with the same pinned versions on every push and pull request.
 
 ## Conventions
 
@@ -83,5 +94,6 @@ More detail is in [docs/Architecture.md](docs/Architecture.md).
 ## Pull requests
 
 - Add or update tests for any behaviour you change, and make sure the whole suite passes in Studio.
+- CI (format, lint and type check) must pass.
 - Update the module's page in `docs/` and add an entry to `CHANGELOG.md`.
 - Don't make performance claims without a benchmark to back them up.

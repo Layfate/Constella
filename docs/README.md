@@ -41,7 +41,7 @@ Reference pages for every module in Constella v0.1.0.
 ## Known limitations
 
 - **Data is beta.** Production use relies on ProfileStore. The adapter is tested against real ProfileStore 1.0.3 in its mock mode, but not yet against live DataStores in a published experience. `MemoryAdapter` isn't persistent.
-- **Tests run in Studio only.** There's no headless CI runner yet.
+- **Tests run in Studio only.** CI checks formatting, lint and strict types on every push, but there's no headless test runner yet.
 - **State dependencies are explicit.** Use `State.computed({ a, b }, fn)`; there's no automatic tracking. Compute functions and batches must not yield.
 - **Network payload sizes are estimates,** not Roblox's exact wire sizes. Validation checks the shape of a request; your handlers still decide what's allowed in the game.
 - **Zone checks points, not volumes.** Each zone has its own Heartbeat connection.
