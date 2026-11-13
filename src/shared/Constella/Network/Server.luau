@@ -108,7 +108,10 @@ end
 
 local function checkName(kind: string, name: any, level: number)
 	if type(name) ~= "string" or #name == 0 or #name > 50 or not string.match(name, NAME_PATTERN) then
-		error(PREFIX .. ("%s name must be 1-50 letters, digits or underscores, got %s"):format(kind, tostring(name)), level)
+		error(
+			PREFIX .. ("%s name must be 1-50 letters, digits or underscores, got %s"):format(kind, tostring(name)),
+			level
+		)
 	end
 end
 
@@ -154,7 +157,9 @@ local function admit(endpoint: any, player: any, ...: any): (boolean, RejectReas
 	end
 	local measured, size, sizeReason = pcall(Payload.measure, endpoint._payloadLimits, ...)
 	if not measured then
-		endpoint._server._onError(PREFIX .. ("Measuring a payload for '%s' failed: %s"):format(endpoint.Name, tostring(size)))
+		endpoint._server._onError(
+			PREFIX .. ("Measuring a payload for '%s' failed: %s"):format(endpoint.Name, tostring(size))
+		)
 		reject(endpoint, player, "PayloadTooLarge", "payload could not be measured")
 		return false, "PayloadTooLarge"
 	end
@@ -166,7 +171,9 @@ local function admit(endpoint: any, player: any, ...: any): (boolean, RejectReas
 	-- An error in one is a server bug: report it and reject the request.
 	local checked, valid, invalidReason = xpcall(Check.arguments, traceback, schema, ...)
 	if not checked then
-		endpoint._server._onError(PREFIX .. ("A Schema validator for '%s' raised an error: %s"):format(endpoint.Name, tostring(valid)))
+		endpoint._server._onError(
+			PREFIX .. ("A Schema validator for '%s' raised an error: %s"):format(endpoint.Name, tostring(valid))
+		)
 		reject(endpoint, player, "InvalidArguments", "a validator raised an error")
 		return false, "InvalidArguments"
 	end
@@ -178,7 +185,9 @@ local function admit(endpoint: any, player: any, ...: any): (boolean, RejectReas
 	if authorize then
 		local ok, allowed = xpcall(authorize, traceback, player, ...)
 		if not ok then
-			endpoint._server._onError(PREFIX .. ("Authorize for '%s' failed: %s"):format(endpoint.Name, tostring(allowed)))
+			endpoint._server._onError(
+				PREFIX .. ("Authorize for '%s' failed: %s"):format(endpoint.Name, tostring(allowed))
+			)
 			reject(endpoint, player, "Unauthorized", "Authorize raised an error")
 			return false, "Unauthorized"
 		end
@@ -222,7 +231,15 @@ local function validateConfig(kind: string, name: string, config: any, level: nu
 	end
 end
 
-local function createEndpoint(server: any, class: any, kind: string, name: string, config: any, className: string, level: number): any
+local function createEndpoint(
+	server: any,
+	class: any,
+	kind: string,
+	name: string,
+	config: any,
+	className: string,
+	level: number
+): any
 	if server._destroyed then
 		error(PREFIX .. "This Server has been destroyed", level)
 	end
@@ -273,9 +290,11 @@ function ServerEventClass._receive(self: any, player: any, ...: any)
 		return
 	end
 	-- Nothing a client sends may raise an error out of here.
-	local ok, admitted = pcall(admit, self, player, ...)
+	local ok, admitted = pcall(admit :: any, self, player, ...)
 	if not ok then
-		self._server._onError(PREFIX .. ("Checking a request for '%s' failed: %s"):format(self.Name, tostring(admitted)))
+		self._server._onError(
+			PREFIX .. ("Checking a request for '%s' failed: %s"):format(self.Name, tostring(admitted))
+		)
 		return
 	end
 	if admitted then
@@ -341,7 +360,9 @@ function ServerFunctionClass._invoke(self: any, player: any, ...: any): ...any
 	-- Nothing a client sends may raise an error back to the client.
 	local ok, admitted, reason = pcall(admit, self, player, ...)
 	if not ok then
-		self._server._onError(PREFIX .. ("Checking a request for '%s' failed: %s"):format(self.Name, tostring(admitted)))
+		self._server._onError(
+			PREFIX .. ("Checking a request for '%s' failed: %s"):format(self.Name, tostring(admitted))
+		)
 		return false, "Rejected"
 	end
 	if not admitted then

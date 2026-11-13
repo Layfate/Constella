@@ -60,6 +60,7 @@ return function(t, Constella)
 			expect((v({ 1, 2, 3 }))).toBe(true)
 			expect((v({ 1, 2, 3, 4 }))).toBe(false)
 			expect((v({ [1] = 1, [3] = 3 }))).toBe(false)
+			-- selene: allow(mixed_table)
 			expect((v({ 1, 2, extra = 3 }))).toBe(false)
 			expect((v({ 1, "two" }))).toBe(false)
 		end)
@@ -272,9 +273,11 @@ return function(t, Constella)
 		end)
 
 		t.it("applies the default rate limit when none is given", function()
-			local server = newServer({ Clock = function()
-				return 0
-			end })
+			local server = newServer({
+				Clock = function()
+					return 0
+				end,
+			})
 			local event = server:Event("Spam", { Schema = {} })
 			local player = fakePlayer()
 			for _ = 1, 50 do
@@ -390,9 +393,11 @@ return function(t, Constella)
 		end)
 
 		t.it("reports RateLimited to the caller", function()
-			local server = newServer({ Clock = function()
-				return 0
-			end })
+			local server = newServer({
+				Clock = function()
+					return 0
+				end,
+			})
 			local fn = server:Function("Once", { Schema = {}, RateLimit = { Count = 1, Per = 60 } })
 			fn:SetHandler(function()
 				return true
@@ -477,6 +482,7 @@ return function(t, Constella)
 			local ok2, code2 = fn:Invoke()
 			expect(ok1).toBe(false)
 			expect(code1).toBe("Timeout")
+			expect(ok2).toBe(false)
 			expect(code2).toBe("Timeout")
 			expect(fn:GetInFlight()).toBe(2)
 			-- The limit is reached: fail fast instead of piling up more threads.

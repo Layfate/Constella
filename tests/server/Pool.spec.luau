@@ -148,4 +148,39 @@ return function(t, Constella)
 		template:Destroy()
 		folder:Destroy()
 	end)
+
+	t.it("stays bounded over a long session with fluctuating demand", function()
+		local maxIdle, maxActive = 8, 20
+		local pool = counterPool({ MaxIdle = maxIdle, MaxActive = maxActive })
+		local rng = Random.new(42)
+		local out = {}
+		local peakActive = 0
+		for _ = 1, 20000 do
+			if #out > 0 and (rng:NextNumber() < 0.5 or #out >= maxActive) then
+				pool:Release(table.remove(out, rng:NextInteger(1, #out)))
+			else
+				local object = pool:TryAcquire()
+				if object then
+					table.insert(out, object)
+				end
+			end
+			peakActive = math.max(peakActive, #out)
+			local stats = pool:GetStats()
+			assert(stats.Idle <= maxIdle, "idle objects exceeded MaxIdle")
+			assert(stats.Active <= maxActive, "active objects exceeded MaxActive")
+		end
+		for _, object in out do
+			pool:Release(object)
+		end
+		local stats = pool:GetStats()
+		expect(stats.Active).toBe(0)
+		expect(stats.Idle <= maxIdle).toBe(true)
+		-- Every object ever created is either idle now or was destroyed.
+		expect(stats.Created - stats.Destroyed).toBe(stats.Idle)
+		-- Reuse dominates: most acquisitions were served from idle objects.
+		-- (Some re-creation is expected: when demand drops, objects beyond
+		-- MaxIdle are destroyed, and they are recreated when demand rises.)
+		expect(stats.Reused > stats.Created * 5).toBe(true)
+		expect(peakActive <= maxActive).toBe(true)
+	end)
 end

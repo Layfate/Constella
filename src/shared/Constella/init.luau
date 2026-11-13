@@ -75,7 +75,11 @@ local Constella = setmetatable({}, {
 		end
 		if PLANNED[key] then
 			error(
-				("[Constella] Constella.%s is not implemented in v%s (planned for %s)"):format(key, VERSION, PLANNED[key]),
+				("[Constella] Constella.%s is not implemented in v%s (planned for %s)"):format(
+					key,
+					VERSION,
+					PLANNED[key]
+				),
 				2
 			)
 		end

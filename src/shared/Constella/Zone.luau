@@ -169,9 +169,12 @@ function ZoneClass.Track(self: any, item: any, getPosition: (() -> Vector3?)?)
 	self._entries[item] = entry
 	table.insert(self._order, entry)
 	if typeof(item) == "Instance" and not item:IsA("Player") then
-		self._cleanup:Set(entry, item.Destroying:Connect(function()
-			self:Untrack(item)
-		end))
+		self._cleanup:Set(
+			entry,
+			item.Destroying:Connect(function()
+				self:Untrack(item)
+			end)
+		)
 	end
 end
 
@@ -232,10 +235,13 @@ function ZoneClass.Step(self: any)
 	local kind, a, b = self._geometry()
 	local padding = self._exitPadding
 	local changes = {}
-	for _, entry in table.clone(self._order) do
+	local order: { any } = table.clone(self._order)
+	for _, entry in order do
 		local ok, position = pcall(entry.getPosition)
 		if not ok then
-			self._onError(PREFIX .. ("Position callback failed for %s: %s"):format(tostring(entry.item), tostring(position)))
+			self._onError(
+				PREFIX .. ("Position callback failed for %s: %s"):format(tostring(entry.item), tostring(position))
+			)
 			position = nil
 		end
 		local inside = false

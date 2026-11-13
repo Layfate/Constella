@@ -167,7 +167,7 @@ local function validateDefinition(app: any, definition: any, source: string?, le
 
 	local environment = definition.Environment
 	if environment ~= nil and environment ~= "Server" and environment ~= "Client" and environment ~= "Shared" then
-		error(PREFIX .. ("'%s'.Environment must be \"Server\", \"Client\" or \"Shared\""):format(name), level)
+		error(PREFIX .. ('\'%s\'.Environment must be "Server", "Client" or "Shared"'):format(name), level)
 	end
 	if environment ~= nil and environment ~= "Shared" and environment ~= app.Environment then
 		error(
@@ -313,7 +313,7 @@ function AppClass.AddModules(self: any, container: Instance, options: AddModules
 	end
 	local recursive = options ~= nil and options.Recursive == true
 	local filter = if options then options.Filter else nil
-	local candidates = if recursive then container:GetDescendants() else container:GetChildren()
+	local candidates: { Instance } = if recursive then container:GetDescendants() else container:GetChildren()
 	local modules = {}
 	for _, instance in candidates do
 		if instance:IsA("ModuleScript") and (filter == nil or filter(instance)) then
@@ -371,7 +371,11 @@ end
 function AppClass.Start(self: any)
 	if self._state ~= "Idle" then
 		error(
-			PREFIX .. ("Cannot start app '%s': it is %s (an app can only be started once)"):format(self.Name, self._state:lower()),
+			PREFIX
+				.. ("Cannot start app '%s': it is %s (an app can only be started once)"):format(
+					self.Name,
+					self._state:lower()
+				),
 			2
 		)
 	end

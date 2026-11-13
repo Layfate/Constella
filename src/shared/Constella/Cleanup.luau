@@ -60,7 +60,10 @@ local function resolve(resource: any, method: string?, level: number): any
 			error(("[Constella.Cleanup] Method name must be a string, got %s"):format(typeof(method)), level)
 		end
 		if not hasMethod(resource, method) then
-			error(("[Constella.Cleanup] Resource of type %s has no method '%s'"):format(typeof(resource), method), level)
+			error(
+				("[Constella.Cleanup] Resource of type %s has no method '%s'"):format(typeof(resource), method),
+				level
+			)
 		end
 		return method
 	end
@@ -168,9 +171,12 @@ local function addEntry(self: any, resource: any, method: string?, key: any, lev
 	local resolved = resolve(resource, method, level + 1)
 
 	if self._destroyed then
-		local ok, err = pcall(dispose, resource, resolved)
+		local ok, err = pcall(dispose :: any, resource, resolved)
 		if not ok then
-			error(("[Constella.Cleanup] A resource added after Destroy failed to clean up: %s"):format(tostring(err)), level)
+			error(
+				("[Constella.Cleanup] A resource added after Destroy failed to clean up: %s"):format(tostring(err)),
+				level
+			)
 		end
 		return resource
 	end
@@ -214,9 +220,15 @@ function CleanupClass.Set(self: any, key: any, resource: any, method: string?): 
 		addEntry(self, resource, method, key, 3)
 	end
 	if previous then
-		local ok, err = pcall(dispose, previous.resource, previous.method)
+		local ok, err = pcall(dispose :: any, previous.resource, previous.method)
 		if not ok then
-			error(("[Constella.Cleanup] Previous resource under key %s failed to clean up: %s"):format(tostring(key), tostring(err)), 2)
+			error(
+				("[Constella.Cleanup] Previous resource under key %s failed to clean up: %s"):format(
+					tostring(key),
+					tostring(err)
+				),
+				2
+			)
 		end
 	end
 	return resource
@@ -236,7 +248,7 @@ function CleanupClass.Remove(self: any, keyOrResource: any): boolean
 		return false
 	end
 	local resource, method = removeAt(self, index)
-	local ok, err = pcall(dispose, resource, method)
+	local ok, err = pcall(dispose :: any, resource, method)
 	if not ok then
 		error(("[Constella.Cleanup] Remove failed to clean up resource: %s"):format(tostring(err)), 2)
 	end
@@ -269,9 +281,15 @@ function CleanupClass.AttachToInstance(self: any, instance: Instance): any
 	if typeof(instance) ~= "Instance" then
 		error(("[Constella.Cleanup] AttachToInstance expects an Instance, got %s"):format(typeof(instance)), 2)
 	end
-	return addEntry(self, instance.Destroying:Connect(function()
-		self:Destroy()
-	end), nil, nil, 3)
+	return addEntry(
+		self,
+		instance.Destroying:Connect(function()
+			self:Destroy()
+		end),
+		nil,
+		nil,
+		3
+	)
 end
 
 local function clean(self: any, level: number)
@@ -295,7 +313,7 @@ local function clean(self: any, level: number)
 		if method == KEYED and self._keys[resource.key] == resource then
 			self._keys[resource.key] = nil
 		end
-		local ok, err = pcall(dispose, resource, method)
+		local ok, err = pcall(dispose :: any, resource, method)
 		if not ok then
 			errors = errors or {}
 			table.insert(errors :: { string }, tostring(err))

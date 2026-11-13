@@ -51,41 +51,53 @@ local function traceback(err: any): string
 	return debug.traceback(tostring(err), 2)
 end
 
+-- Connections form a doubly linked list in connection order.
+--
+-- Layout: internal fields live in the table's array part, which Luau stores
+-- compactly; only the public `Connected` field uses the hash part.
+--   [1] callback   [2] signal   [3] previous (or false)   [4] next (or false)
+--   [5] id: increases with every Connect; negative for Once connections
+--
+-- Fire only visits ids that existed when it started, which gives snapshot
+-- semantics without copying the list. A disconnected node keeps its next
+-- pointer, so a Fire that is walking past it carries on.
+local CALLBACK, SIGNAL, PREVIOUS, NEXT, ID = 1, 2, 3, 4, 5
+
 -- Listeners run on recycled "runner" threads instead of a new coroutine
 -- per call. A runner marks itself busy while a listener runs; if that
 -- listener yields, the next listener gets a fresh runner, so a yielding
 -- listener never blocks the others. Errors are caught per listener, so a
--- failing listener never kills its runner.
+-- failing listener never kills its runner. A runner receives the connection
+-- itself, so Fire passes one argument fewer and the error handler is only
+-- looked up when a listener fails.
 local freeRunner: thread? = nil
 
-local function runOnRunner(onError: (string) -> (), callback: (...any) -> (), ...: any)
+local function runOnRunner(connection: any, ...: any)
 	local runner = freeRunner
 	freeRunner = nil
-	local ok, message = xpcall(callback, traceback, ...)
+	local ok, message = xpcall(connection[CALLBACK], traceback, ...)
 	if not ok then
-		onError(message)
+		connection[SIGNAL]._onError(message)
 	end
 	freeRunner = runner
 end
 
-local function runnerLoop(...: any)
-	runOnRunner(...)
+-- The loop takes no arguments and starts by yielding, so a runner never
+-- keeps a call's callback or arguments alive between calls. (Entering the
+-- loop with the first call's arguments would pin them on its stack frame
+-- for as long as the runner exists.)
+local function runnerLoop()
 	while true do
 		runOnRunner(coroutine.yield())
 	end
 end
 
-local function dispatch(onError: (string) -> (), callback: (...any) -> (), ...: any)
-	if freeRunner == nil then
-		freeRunner = coroutine.create(runnerLoop)
-	end
-	task.spawn(freeRunner :: thread, onError, callback, ...)
+local function newRunner(): thread
+	local runner = coroutine.create(runnerLoop)
+	coroutine.resume(runner) -- run to the first yield
+	return runner
 end
 
--- Connections form a doubly linked list in connection order. Each has an
--- increasing id; Fire only visits ids that existed when it started, which
--- gives snapshot semantics without copying the list. A disconnected node
--- keeps its _next pointer, so a Fire that is walking past it carries on.
 local ConnectionClass = {}
 ConnectionClass.__index = ConnectionClass
 
@@ -94,17 +106,17 @@ function ConnectionClass.Disconnect(self: any)
 		return
 	end
 	self.Connected = false
-	local signal = self._signal
-	local previous, following = self._prev, self._next
+	local signal = self[SIGNAL]
+	local previous, following = self[PREVIOUS], self[NEXT]
 	if previous then
-		previous._next = following
+		previous[NEXT] = following
 	else
-		signal._head = following
+		signal._head = following or nil
 	end
 	if following then
-		following._prev = previous
+		following[PREVIOUS] = previous
 	else
-		signal._tail = previous
+		signal._tail = previous or nil
 	end
 	signal._count -= 1
 end
@@ -113,46 +125,70 @@ ConnectionClass.Destroy = ConnectionClass.Disconnect
 local SignalClass = {}
 SignalClass.__index = SignalClass
 
-local function connect(self: any, callback: any, once: boolean, method: string): Connection
+local function connectError(self: any, callback: any, method: string)
 	if self._destroyed then
 		error(("[Constella.Signal] Cannot %s a destroyed Signal"):format(method), 3)
 	end
-	if type(callback) ~= "function" then
-		error(("[Constella.Signal] %s expects a function, got %s"):format(method, typeof(callback)), 3)
+	error(("[Constella.Signal] %s expects a function, got %s"):format(method, typeof(callback)), 3)
+end
+
+-- Connect is a hot path, so the checks and list append are written out
+-- here instead of calling a shared helper (one call fewer per Connect).
+local function append(self: any, callback: any, once: boolean, method: string): any
+	if self._destroyed or type(callback) ~= "function" then
+		connectError(self, callback, method)
 	end
 	local id = self._nextId
 	self._nextId = id + 1
 	local tail = self._tail
+	-- Array slots keep connections compact; Connected is the public field.
+	-- selene: allow(mixed_table)
 	local connection = setmetatable({
+		callback,
+		self,
+		tail or false,
+		false,
+		if once then -id else id,
 		Connected = true,
-		_signal = self,
-		_callback = callback,
-		_once = once,
-		_id = id,
-		_prev = tail,
-		_next = nil,
 	}, ConnectionClass)
 	if tail then
-		tail._next = connection
+		tail[NEXT] = connection
 	else
 		self._head = connection
 	end
 	self._tail = connection
 	self._count += 1
-	return connection :: any
+	return connection
 end
 
 function SignalClass.Connect(self: any, callback: (...any) -> ()): Connection
-	return connect(self, callback, false, "Connect")
+	if self._destroyed or type(callback) ~= "function" then
+		connectError(self, callback, "Connect")
+	end
+	local id = self._nextId
+	self._nextId = id + 1
+	local tail = self._tail
+	-- Array slots per the layout above; Connected is the public field.
+	-- selene: allow(mixed_table)
+	local connection: any =
+		setmetatable({ callback :: any, self, tail or false, false, id, Connected = true }, ConnectionClass)
+	if tail then
+		tail[NEXT] = connection
+	else
+		self._head = connection
+	end
+	self._tail = connection
+	self._count += 1
+	return connection
 end
 
 function SignalClass.Once(self: any, callback: (...any) -> ()): Connection
-	return connect(self, callback, true, "Once")
+	return append(self, callback, true, "Once")
 end
 
 function SignalClass.Wait(self: any): ...any
 	local thread = coroutine.running()
-	connect(self, function(...)
+	append(self, function(...)
 		task.spawn(thread, ...)
 	end, true, "Wait on")
 	return coroutine.yield()
@@ -163,27 +199,47 @@ function SignalClass.Fire(self: any, ...: any)
 		return
 	end
 	local node = self._head
-	if node == nil then
+	if not node then
 		return
 	end
 	local lastId = self._nextId - 1
-	local onError = self._onError
-	while node ~= nil and node._id <= lastId do
-		if node.Connected then
-			if node._once then
-				node:Disconnect()
+	-- Dispatch is written out here (one call fewer per listener). A runner
+	-- clears freeRunner while its listener runs and restores it when the
+	-- listener returns, so a listener that yields makes the next one start
+	-- on a new runner.
+	while node do
+		local id = node[ID]
+		if id < 0 then
+			if -id > lastId then
+				break
 			end
-			dispatch(onError, node._callback, ...)
+			if node.Connected then
+				node:Disconnect()
+				if freeRunner == nil then
+					freeRunner = newRunner()
+				end
+				task.spawn(freeRunner :: thread, node, ...)
+			end
+		else
+			if id > lastId then
+				break
+			end
+			if node.Connected then
+				if freeRunner == nil then
+					freeRunner = newRunner()
+				end
+				task.spawn(freeRunner :: thread, node, ...)
+			end
 		end
-		node = node._next
+		node = node[NEXT]
 	end
 end
 
 function SignalClass.DisconnectAll(self: any)
 	local node = self._head
-	while node ~= nil do
+	while node do
 		node.Connected = false
-		node = node._next
+		node = node[NEXT]
 	end
 	self._head = nil
 	self._tail = nil

@@ -226,17 +226,26 @@ function StoreClass._prepare(self: any, data: any): (any, DataError?)
 	while version < target do
 		local migrate = self._migrations[version]
 		if migrate == nil then
-			return nil, dataError("MissingMigration", ("no migration from version %d to %d"):format(version, version + 1))
+			return nil,
+				dataError("MissingMigration", ("no migration from version %d to %d"):format(version, version + 1))
 		end
 		local ok, result = xpcall(migrate, function(err)
 			return debug.traceback(tostring(err), 2)
 		end, working)
 		if not ok then
-			return nil, dataError("MigrationFailed", ("migration %d -> %d failed: %s"):format(version, version + 1, tostring(result)))
+			return nil,
+				dataError(
+					"MigrationFailed",
+					("migration %d -> %d failed: %s"):format(version, version + 1, tostring(result))
+				)
 		end
 		if result ~= nil then
 			if type(result) ~= "table" then
-				return nil, dataError("MigrationFailed", ("migration %d -> %d returned a %s"):format(version, version + 1, typeof(result)))
+				return nil,
+					dataError(
+						"MigrationFailed",
+						("migration %d -> %d returned a %s"):format(version, version + 1, typeof(result))
+					)
 			end
 			working = result
 		end
@@ -414,9 +423,12 @@ function StoreClass.BindPlayers(self: any)
 		self:LoadAsync(player):Catch(function() end) -- failures are reported and handled by the store
 	end
 	table.insert(self._connections, Players.PlayerAdded:Connect(load))
-	table.insert(self._connections, Players.PlayerRemoving:Connect(function(player)
-		self:Release(player)
-	end))
+	table.insert(
+		self._connections,
+		Players.PlayerRemoving:Connect(function(player)
+			self:Release(player)
+		end)
+	)
 	for _, player in Players:GetPlayers() do
 		task.spawn(load, player)
 	end
@@ -500,7 +512,7 @@ function Store.new(config: Config): Store
 	if type(version) ~= "number" or version < 1 or version % 1 ~= 0 then
 		error(PREFIX .. "Config.Version must be an integer >= 1", 2)
 	end
-	local migrations = config.Migrations or {}
+	local migrations: { [any]: any } = config.Migrations or {}
 	if type(migrations) ~= "table" then
 		error(PREFIX .. "Config.Migrations must be a table", 2)
 	end

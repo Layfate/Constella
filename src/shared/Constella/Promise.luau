@@ -225,7 +225,7 @@ function PromiseClass.Finally(self: any, callback: (Status) -> ()): any
 	subscribe(self, function()
 		local status, values = self._status, self._values
 		task.spawn(function()
-			local ok, err = xpcall(callback, captureError, status)
+			local ok, err = xpcall(callback :: any, captureError, status)
 			if not ok then
 				settle(child, "Rejected", table.pack(err))
 			elseif status == "Cancelled" then
@@ -300,7 +300,11 @@ local Promise = {}
 --- Creates a promise. `executor(resolve, reject, onCancel)` runs right away.
 --- `onCancel(hook)` registers cleanup for cancellation and returns true if
 --- the promise is already cancelled; `onCancel()` just returns that flag.
-function Promise.new(executor: (resolve: (...any) -> (), reject: (...any) -> (), onCancel: (hook: (() -> ())?) -> boolean) -> ()): Promise
+function Promise.new(executor: (
+	resolve: (...any) -> (),
+	reject: (...any) -> (),
+	onCancel: (hook: (() -> ())?) -> boolean
+) -> ()): Promise
 	if type(executor) ~= "function" then
 		error(PREFIX .. ("Promise.new expects a function, got %s"):format(typeof(executor)), 2)
 	end
@@ -326,7 +330,7 @@ function Promise.new(executor: (resolve: (...any) -> (), reject: (...any) -> (),
 		return false
 	end
 	task.spawn(function()
-		local ok, err = xpcall(executor, captureError, resolve, reject, onCancel)
+		local ok, err = xpcall(executor :: any, captureError, resolve, reject, onCancel)
 		if not ok then
 			settle(self, "Rejected", table.pack(err))
 		end
@@ -502,9 +506,11 @@ end
 --- if this promise has not settled after `seconds`, and cancels it.
 function PromiseClass.Timeout(self: any, seconds: number, rejectionValue: any?): any
 	local timer = Promise.delay(seconds):Then(function()
-		return Promise.reject(if rejectionValue ~= nil
-			then rejectionValue
-			else newError("Timeout", ("Timed out after %s seconds"):format(tostring(seconds))))
+		return Promise.reject(
+			if rejectionValue ~= nil
+				then rejectionValue
+				else newError("Timeout", ("Timed out after %s seconds"):format(tostring(seconds)))
+		)
 	end)
 	return Promise.race({ self, timer })
 end

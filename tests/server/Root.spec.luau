@@ -9,21 +9,23 @@ return function(t, Constella)
 	end)
 
 	t.it("loads every module", function()
-		for _, name in {
-			"Core",
-			"Signal",
-			"Cleanup",
-			"State",
-			"Random",
-			"Network",
-			"Component",
-			"Pool",
-			"Zone",
-			"Debug",
-			"Promise",
-			"Data",
-			"Replication",
-		} do
+		for _, name in
+			{
+				"Core",
+				"Signal",
+				"Cleanup",
+				"State",
+				"Random",
+				"Network",
+				"Component",
+				"Pool",
+				"Zone",
+				"Debug",
+				"Promise",
+				"Data",
+				"Replication",
+			}
+		do
 			expect(type(Constella[name])).toBe("table")
 		end
 	end)

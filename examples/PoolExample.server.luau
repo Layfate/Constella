@@ -35,6 +35,8 @@ end
 
 task.wait(1)
 local stats = bullets:GetStats()
-print(("[Pool] created %d, reused %d, idle %d, active %d"):format(stats.Created, stats.Reused, stats.Idle, stats.Active))
+print(
+	("[Pool] created %d, reused %d, idle %d, active %d"):format(stats.Created, stats.Reused, stats.Idle, stats.Active)
+)
 bullets:Destroy()
 template:Destroy()
