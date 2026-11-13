@@ -16,7 +16,8 @@
 	Method
 	- Speed: the whole suite runs `Runs` times (default 5). Within a run,
 	  each case is the median of 5 timed trials. The report shows the
-	  median across runs, and the best and worst run.
+	  median across runs, the best and worst run, and then every run's
+	  result in the order the runs happened.
 	- Memory: bytes per object, 80th percentile of 21 builds of 5,000
 	  objects (see Bench.bytesPerObject for why).
 	- Leaks: objects are released while their owner stays alive, then the
@@ -325,6 +326,7 @@ return function(options: { Runs: number? }?): string
 		"| --- | --- | --- | ---: | ---: | ---: |",
 	}
 	for _, entry in cases do
+		entry.inRunOrder = table.clone(entry.samples)
 		table.sort(entry.samples)
 		local count = #entry.samples
 		table.insert(
@@ -339,6 +341,23 @@ return function(options: { Runs: number? }?): string
 			)
 		)
 	end
+	-- Every run's result, in the order the runs happened.
+	table.insert(lines, "")
+	local header, divider = { "| Case | Implementation |" }, { "| --- | --- |" }
+	for run = 1, runs do
+		table.insert(header, (" Run %d |"):format(run))
+		table.insert(divider, " ---: |")
+	end
+	table.insert(lines, table.concat(header))
+	table.insert(lines, table.concat(divider))
+	for _, entry in cases do
+		local cells = { ("| %s: %s | %s |"):format(entry.group, entry.name, entry.implementation) }
+		for _, sample in entry.inRunOrder do
+			table.insert(cells, (" %.3f |"):format(sample))
+		end
+		table.insert(lines, table.concat(cells))
+	end
+
 	table.insert(lines, "")
 	table.insert(lines, ("| Memory per object (%d objects) | Implementation | Bytes |"):format(COUNT))
 	table.insert(lines, "| --- | --- | ---: |")
