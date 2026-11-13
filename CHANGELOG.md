@@ -2,7 +2,7 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-11-13
 
 First release, made by Zense. Every module listed in the roadmap is included. `Data` is marked beta.
 
