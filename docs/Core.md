@@ -40,11 +40,32 @@ return InventoryService
 1. **`Add`** checks the shape of the definition. It rejects duplicate names, self-dependencies and wrong `Environment` values (a client app refuses `Environment = "Server"`). It only works before `Start`.
 2. **`Start`** first resolves the graph. Missing dependencies (all of them listed at once) and cycles (shown as `A -> B -> C -> A`) fail before any user code runs.
 3. **Init** runs sequentially in dependency order, and each Init can yield. Connect to other services' signals here. They begin emitting in their own `Start`, which runs only after every `Init` has finished.
-4. **Start** also runs in dependency order, each one on its own thread. An error thrown before the first yield fails startup. An error thrown after a yield goes to `OnError` (by default it's raised on a new thread) and the app keeps running.
+4. **Start** also runs in dependency order, each one on its own thread. An error thrown before the first yield fails startup. An error thrown after a yield goes to `OnError` (by default it's raised on a new thread) and the app keeps running. For a critical service, see [Readiness](#readiness-waitforstart).
 5. **Failed startup**: `Stop` runs in reverse order for every definition whose `Init` was called, and each one's `context.Cleanup` is destroyed. Then `Start` raises. The app's state becomes `"Failed"` and it can't be restarted. Write `Stop` so it copes with `Start` never having run.
 6. **`Stop`** runs `Stop` in reverse dependency order, then destroys each Cleanup. Errors are collected and raised together after everything has stopped. Calling it again does nothing.
 
 The order is deterministic. Definitions are visited in registration order and dependencies in the order they're declared.
+
+## Readiness (`WaitForStart`)
+
+Some services must be fully ready before anything else runs, such as a database connection or a config load. Mark them with `WaitForStart = true`:
+
+```lua
+local ConfigService = {
+	Name = "ConfigService",
+	WaitForStart = true,
+	StartTimeout = 10, -- seconds; default 30
+}
+
+function ConfigService:Start(context)
+	self.Config = fetchConfig() -- may yield
+end
+```
+
+- `app:Start()` yields until this definition's `Start` has finished, even if it yields. Only then do later definitions start, and only after every gated `Start` finishes does the app become `Running`.
+- An error at **any** point in that `Start`, including after a yield, fails startup with the usual rollback.
+- If `Start` runs longer than `StartTimeout`, it's cancelled, startup fails with "did not finish within N seconds", and the rollback runs.
+- Definitions without `WaitForStart` behave as before.
 
 ## API
 
@@ -53,7 +74,7 @@ The order is deterministic. Definitions are visited in registration order and de
 | `App.new(options?)` | `options.Name`, `options.Environment` (`"Server"`/`"Client"`, auto-detected), `options.OnError` |
 | `app:Add(definition)` | Registers a definition and returns it |
 | `app:AddModules(container, { Recursive?, Filter? }?)` | Requires and adds the ModuleScripts in `container`, sorted by full name |
-| `app:Start()` | Runs Init then Start. Can only be called once |
+| `app:Start()` | Runs Init then Start. Can only be called once. Yields while a `WaitForStart` definition is starting |
 | `app:AwaitStart()` | Yields until the app is running. Raises if startup failed |
 | `app:Stop()` | Stops the app. Idempotent |
 | `app:Get(name)` / `app:Has(name)` | Looks up a definition |

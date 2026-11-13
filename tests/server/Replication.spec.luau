@@ -133,4 +133,53 @@ return function(t, Constella)
 			mirror:Destroy()
 		end)
 	end)
+
+	t.describe("review fixes", function()
+		t.it("keeps versions increasing when a share is stopped and recreated", function()
+			local server = newServer()
+			local player = { Name = "P" }
+			local mirror = Replication._newMirror()
+
+			local first = server:ShareWith(player, "Coins", State.new(5))
+			local before = snapshot(server, player).Coins
+			mirror:Apply("Coins", before[1], before[2])
+			first:Stop()
+
+			-- Recreated under the same name, with a new state starting over.
+			server:ShareWith(player, "Coins", State.new(7))
+			local after = snapshot(server, player).Coins
+			expect(after[2] > before[2]).toBe(true)
+
+			-- A client that remembered the old version still accepts the new share.
+			mirror:Apply("Coins", after[1], after[2])
+			expect(mirror:Get("Coins"):Get()).toBe(7)
+			mirror:Destroy()
+			server:Destroy()
+		end)
+
+		t.it("serves only validated values in snapshots", function()
+			local server, errors = newServer()
+			local player = { Name = "P" }
+			local value = State.new("ok")
+			server:ShareWith(player, "Thing", value)
+			local good = snapshot(server, player).Thing
+			value:Set(function() end) -- unsupported
+			value:Set(string.rep("x", 20000)) -- too large
+			local after = snapshot(server, player).Thing
+			expect(after[1]).toBe("ok")
+			expect(after[2]).toBe(good[2])
+			expect(#errors).toBe(2)
+			value:Set("fine again")
+			expect(snapshot(server, player).Thing[1]).toBe("fine again")
+			server:Destroy()
+		end)
+
+		t.it("rejects an oversized initial value at Share time", function()
+			local server = newServer()
+			expect(function()
+				server:Share("Huge", State.new(string.rep("x", 20000)))
+			end).toThrow("cannot be replicated")
+			server:Destroy()
+		end)
+	end)
 end

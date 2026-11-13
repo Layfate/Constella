@@ -26,8 +26,11 @@
 	- Values must be replicable (no functions, threads or metatables) and at
 	  most MaxValueBytes (default 16 KB). Invalid values are reported on the
 	  server and not sent.
-	- Each share carries a version number, so an initial snapshot can never
-	  overwrite a newer update that arrived first.
+	- Versions come from one increasing counter per replicator, so an initial
+	  snapshot can never overwrite a newer update that arrived first, and a
+	  share that is stopped and recreated is never mistaken for stale data.
+	- Snapshots only contain values that passed validation: a rejected update
+	  is reported and the last valid value keeps being served.
 	- Tables are compared by reference (State semantics): set a new table
 	  to replicate a change.
 ]=]
@@ -126,21 +129,43 @@ function ServerClass._audience(self: any, share: any): { any }
 	return Players:GetPlayers()
 end
 
-function ServerClass._send(self: any, share: any, value: any, removed: boolean)
-	if not removed then
-		local reason = unsupported(value)
-		if reason == nil then
-			local size, sizeReason = Network.Payload.measure({ MaxBytes = self._maxBytes, MaxDepth = 16, MaxNodes = 4096 }, value)
-			if size == nil then
-				reason = sizeReason
-			end
-		end
-		if reason then
-			self:_report(("'%s' was not replicated: %s"):format(share.name, reason))
-			return
-		end
+-- Returns nil when `value` may be sent, otherwise why it may not.
+function ServerClass._validate(self: any, value: any): string?
+	local reason = unsupported(value)
+	if reason ~= nil then
+		return reason
 	end
-	self._update:FireList(self:_audience(share), share.name, value, share.version, removed)
+	local size, sizeReason = Network.Payload.measure({ MaxBytes = self._maxBytes, MaxDepth = 16, MaxNodes = 4096 }, value)
+	if size == nil then
+		return sizeReason
+	end
+	return nil
+end
+
+-- Versions come from one counter per replicator that only ever increases,
+-- so a share that is stopped and recreated under the same name always
+-- continues above every version a client has already seen.
+function ServerClass._nextVersion(self: any): number
+	self._clock += 1
+	return self._clock
+end
+
+function ServerClass._broadcast(self: any, share: any, removed: boolean)
+	self._update:FireList(self:_audience(share), share.name, share.value, share.version, removed)
+end
+
+-- Applies a new value: validated first, then cached and sent. A rejected
+-- value is reported and never cached, so snapshots keep serving the last
+-- value that passed validation.
+function ServerClass._publish(self: any, share: any, value: any)
+	local reason = self:_validate(value)
+	if reason then
+		self:_report(("'%s' was not replicated: %s"):format(share.name, reason))
+		return
+	end
+	share.value = value
+	share.version = self:_nextVersion()
+	self:_broadcast(share, false)
 end
 
 function ServerClass._addShare(self: any, player: any, name: string, state: any, level: number): Share
@@ -156,7 +181,8 @@ function ServerClass._addShare(self: any, player: any, name: string, state: any,
 	if existingKind ~= nil and existingKind ~= kind then
 		error(PREFIX .. ("'%s' is already shared as %s"):format(name, existingKind), level)
 	end
-	local reason = unsupported(state:Get())
+	local initial = state:Get()
+	local reason = self:_validate(initial)
 	if reason then
 		error(PREFIX .. ("'%s' cannot be replicated: %s"):format(name, reason), level)
 	end
@@ -180,7 +206,8 @@ function ServerClass._addShare(self: any, player: any, name: string, state: any,
 		name = name,
 		player = player,
 		state = state,
-		version = 1,
+		value = initial, -- last value that passed validation
+		version = self:_nextVersion(),
 		_active = true,
 		_server = self,
 	}, ShareClass)
@@ -189,11 +216,10 @@ function ServerClass._addShare(self: any, player: any, name: string, state: any,
 	self._nameCounts[name] = (self._nameCounts[name] or 0) + 1
 
 	share.connection = state:Subscribe(function(value)
-		share.version += 1
-		self:_send(share, value, false)
+		self:_publish(share, value)
 	end)
 	-- Clients that are already connected learn about the new share now.
-	self:_send(share, state:Get(), false)
+	self:_broadcast(share, false)
 	return (share :: any) :: Share
 end
 
@@ -213,8 +239,9 @@ function ServerClass._removeShare(self: any, share: any)
 		self._nameKinds[share.name] = nil
 	end
 	if not self._destroyed then
-		share.version += 1
-		self:_send(share, nil, true)
+		share.value = nil
+		share.version = self:_nextVersion()
+		self:_broadcast(share, true)
 	end
 end
 
@@ -235,12 +262,12 @@ end
 function ServerClass._snapshotFor(self: any, player: any): { [string]: { any } }
 	local snapshot = {}
 	for name, share in self._public do
-		snapshot[name] = { share.state:Get(), share.version }
+		snapshot[name] = { share.value, share.version }
 	end
 	local private = self._private[player]
 	if private then
 		for name, share in private do
-			snapshot[name] = { share.state:Get(), share.version }
+			snapshot[name] = { share.value, share.version }
 		end
 	end
 	return snapshot
@@ -313,6 +340,7 @@ function Server.new(namespace: string, options: ServerOptions?): ReplicationServ
 		_nameKinds = {},
 		_nameCounts = {},
 		_maxBytes = maxBytes,
+		_clock = 0,
 		_destroyed = false,
 		_onError = onError,
 	}, ServerClass)

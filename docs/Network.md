@@ -51,6 +51,8 @@ Other rules:
 - **Rate limiting is on by default** (30 requests per second per player, per endpoint). Pass `RateLimit = false` only for endpoints you rate-limit some other way.
 - **Leaving and rejoining:** per-player state is dropped on `PlayerRemoving`, so a player who rejoins starts with a fresh bucket and nothing leaks.
 
+Validators are your code too (custom functions, `Check.refine` predicates). If one throws, the error goes to `OnError` as a server bug and the request is rejected as `InvalidArguments`. The client never sees the error text.
+
 Validation only checks that the *shape* of a request is acceptable. Your handler still decides whether it's *allowed* in the game (for example, whether the player can afford the item). Never accept prices, rewards or outcomes from the client.
 
 ## Client vs server API
@@ -61,12 +63,14 @@ Validation only checks that the *shape* of a request is acceptable. Your handler
 | Events | `server:Event(name, config?)` | `client:Event(name)` |
 | Receive | `event:Connect(function(player, ...) end)`. Only validated requests arrive | `event:Connect(function(...) end)` |
 | Send | `event:Fire(player, ...)`, `FireAll`, `FireList`, `FireExcept` | `event:Fire(...)` |
-| Functions | `server:Function(name, config)` then `fn:SetHandler(handler)` | `client:Function(name, { Timeout? })` |
+| Functions | `server:Function(name, config)` then `fn:SetHandler(handler)` | `client:Function(name, { Timeout?, MaxInFlight? })` |
 | Call | Not available (the server never invokes clients) | `fn:Invoke(...)` returns `(true, ...)` or `(false, code)` |
-| Errors | Handler errors go to `OnError`. Rejections go to `OnReject` and `GetStats` | Codes: `Timeout`, `RateLimited`, `Rejected`, `Unavailable`, `ServerError`, `NetworkError` |
+| Errors | Handler and validator errors go to `OnError`. Rejections go to `OnReject` and `GetStats` | Codes: `Timeout`, `TooManyRequests`, `RateLimited`, `Rejected`, `Unavailable`, `ServerError`, `NetworkError` |
 | Cleanup | `server:Destroy()` removes the folder and every remote | `client:Destroy()` disconnects handlers |
 
-`Server.new` raises if it's used on a client, and `Client.new` raises if it's used on the server. `Invoke` never hangs: it returns `(false, "Timeout")` after the timeout.
+`Server.new` raises if it's used on a client, and `Client.new` raises if it's used on the server.
+
+`Invoke` never hangs: it returns `(false, "Timeout")` after the timeout (default 10 seconds). Luau can't cancel a timed-out `InvokeServer`, because the engine owns that wait, so its thread stays suspended until the server answers. To keep that bounded, each client function allows at most `MaxInFlight` calls (default 8) to be outstanding, counting timed-out ones that haven't come back yet. Beyond that, `Invoke` returns `(false, "TooManyRequests")` straight away without contacting the server. `fn:GetInFlight()` reports the current count.
 
 ## Endpoint config
 
