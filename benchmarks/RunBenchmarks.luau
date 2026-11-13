@@ -1,4 +1,5 @@
 --!nonstrict
+--!nolint DeprecatedApi
 --[=[
 	Constella benchmarks. Run from the Studio command bar (Edit mode):
 
@@ -313,11 +314,12 @@ return function(options: { Runs: number? }?): string
 	bindable:Destroy()
 
 	-- Report ------------------------------------------------------------------------
+	-- version() is deprecated, but its replacement RunService:GetRobloxVersion()
+	-- needs RobloxScript capability, which the command bar and plugins lack.
+	-- selene: allow(undefined_variable)
+	local studioVersion = version()
 	local lines = {
-		("Runs: %d (each the median of 5 trials). Studio %s."):format(
-			runs,
-			game:GetService("RunService"):GetRobloxVersion()
-		),
+		("Runs: %d (each the median of 5 trials). Studio %s."):format(runs, studioVersion),
 		"",
 		"| Group | Case | Implementation | Median µs/op | Best run | Worst run |",
 		"| --- | --- | --- | ---: | ---: | ---: |",
