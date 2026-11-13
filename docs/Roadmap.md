@@ -19,10 +19,10 @@ Scope notes:
 
 This stage proves that what exists works well. No new modules are planned.
 
-- **Data:** run it with real ProfileStore in a separate test experience. Cover disconnects, shutdowns, rejoining a second server and high player counts. Data stays beta until this passes.
-- **Pool:** benchmark instance reuse against creating and destroying instances, and measure memory over long sessions.
+- **Data:** ✅ tested against real ProfileStore 1.0.3 in its mock mode, including save completion and shutdown. ⏳ Still to do: run it against live DataStores in a separate published experience (disconnects, shutdowns, rejoining a second server, high player counts). Data stays beta until then.
+- **Pool:** ✅ instance reuse benchmarked (about half the cost of clone and destroy). ⏳ Memory over long sessions isn't measured yet.
 - **Random:** add statistical distribution tests (chi-squared) on top of the existing tolerance tests. Document a pattern for server-authoritative reward flows.
-- **Benchmarks** for Signal, Cleanup, Pool and Network validation against well-known standalone libraries. No performance claims will be made until they exist.
+- **Benchmarks:** ✅ done. See [Benchmarks](Benchmarks.md). They led to a 3–4× faster Signal and 4× less Cleanup memory.
 - **Script Analysis pass**, to fix strict-mode type warnings.
 
 ## Toward 1.0

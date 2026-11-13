@@ -20,6 +20,7 @@ src/client/             demo client app (replicated coins label, shop client)
 examples/               one zero-setup script per module
 tests/server/           unit tests (TestKit + *.spec modules) and the server halves of integration tests
 tests/client/           client halves of the Network and Replication integration tests
+benchmarks/             benchmark suite (see docs/Benchmarks.md)
 docs/                   reference documentation
 assets/                 logo files
 default.project.json    package build (Wally, pesde, .rbxm)
@@ -48,6 +49,18 @@ require(game.ServerScriptService.ConstellaTests.RunTests)()
 ```
 
 A spec is a ModuleScript named `Something.spec` that returns `function(t, Constella)` and uses `t.describe`, `t.it` and `t.expect`. See [tests/server/TestKit.luau](tests/server/TestKit.luau).
+
+### Testing against real ProfileStore
+
+Add [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore) (verified with 1.0.3) to the dev place as a ModuleScript named `ProfileStore` in `ServerStorage`. `tests/server/ProfileStore.spec.luau` then runs Data against it, always in ProfileStore's mock mode, so no real data is touched. Without ProfileStore, those tests are reported as skipped.
+
+## Benchmarks
+
+```lua
+print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)())
+```
+
+Run this in the Studio command bar (Edit mode). To compare with other libraries, add `Signal` (sleitnick/signal) and `Trove` (sleitnick/trove) ModuleScripts to `ServerStorage.BenchmarkLibs`. If you change a hot path, re-run the benchmarks and update [docs/Benchmarks.md](docs/Benchmarks.md).
 
 ## Lint and format
 

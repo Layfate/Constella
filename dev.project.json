@@ -19,6 +19,9 @@
 			},
 			"ConstellaTests": {
 				"$path": "tests/server"
+			},
+			"ConstellaBenchmarks": {
+				"$path": "benchmarks"
 			}
 		},
 		"StarterPlayer": {

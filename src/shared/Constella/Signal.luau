@@ -9,8 +9,9 @@
 	- `Fire` iterates over a snapshot: a listener connected during dispatch is
 	  not called until the next `Fire`; a listener disconnected during dispatch
 	  (before its turn) is skipped.
-	- Each listener runs on its own thread via `task.spawn`, so it starts
-	  immediately, and a listener that yields does not block the others.
+	- Each listener starts immediately on a runner thread (recycled when the
+	  previous listener did not yield), so a listener that yields does not
+	  block the others.
 	- A listener error never stops other listeners and never propagates out of
 	  `Fire`. It is passed to `Options.OnError`, or re-raised on a separate
 	  thread (so it still shows in the output) when no handler is given.
@@ -50,13 +51,41 @@ local function traceback(err: any): string
 	return debug.traceback(tostring(err), 2)
 end
 
-local function runListener(onError: (string) -> (), callback: (...any) -> (), ...: any)
+-- Listeners run on recycled "runner" threads instead of a new coroutine
+-- per call. A runner marks itself busy while a listener runs; if that
+-- listener yields, the next listener gets a fresh runner, so a yielding
+-- listener never blocks the others. Errors are caught per listener, so a
+-- failing listener never kills its runner.
+local freeRunner: thread? = nil
+
+local function runOnRunner(onError: (string) -> (), callback: (...any) -> (), ...: any)
+	local runner = freeRunner
+	freeRunner = nil
 	local ok, message = xpcall(callback, traceback, ...)
 	if not ok then
 		onError(message)
 	end
+	freeRunner = runner
 end
 
+local function runnerLoop(...: any)
+	runOnRunner(...)
+	while true do
+		runOnRunner(coroutine.yield())
+	end
+end
+
+local function dispatch(onError: (string) -> (), callback: (...any) -> (), ...: any)
+	if freeRunner == nil then
+		freeRunner = coroutine.create(runnerLoop)
+	end
+	task.spawn(freeRunner :: thread, onError, callback, ...)
+end
+
+-- Connections form a doubly linked list in connection order. Each has an
+-- increasing id; Fire only visits ids that existed when it started, which
+-- gives snapshot semantics without copying the list. A disconnected node
+-- keeps its _next pointer, so a Fire that is walking past it carries on.
 local ConnectionClass = {}
 ConnectionClass.__index = ConnectionClass
 
@@ -65,11 +94,19 @@ function ConnectionClass.Disconnect(self: any)
 		return
 	end
 	self.Connected = false
-	local list = self._signal._connections
-	local index = table.find(list, self)
-	if index then
-		table.remove(list, index)
+	local signal = self._signal
+	local previous, following = self._prev, self._next
+	if previous then
+		previous._next = following
+	else
+		signal._head = following
 	end
+	if following then
+		following._prev = previous
+	else
+		signal._tail = previous
+	end
+	signal._count -= 1
 end
 ConnectionClass.Destroy = ConnectionClass.Disconnect
 
@@ -83,13 +120,25 @@ local function connect(self: any, callback: any, once: boolean, method: string):
 	if type(callback) ~= "function" then
 		error(("[Constella.Signal] %s expects a function, got %s"):format(method, typeof(callback)), 3)
 	end
+	local id = self._nextId
+	self._nextId = id + 1
+	local tail = self._tail
 	local connection = setmetatable({
 		Connected = true,
 		_signal = self,
 		_callback = callback,
 		_once = once,
+		_id = id,
+		_prev = tail,
+		_next = nil,
 	}, ConnectionClass)
-	table.insert(self._connections, connection)
+	if tail then
+		tail._next = connection
+	else
+		self._head = connection
+	end
+	self._tail = connection
+	self._count += 1
 	return connection :: any
 end
 
@@ -113,27 +162,32 @@ function SignalClass.Fire(self: any, ...: any)
 	if self._destroyed then
 		return
 	end
-	local connections = self._connections
-	if #connections == 0 then
+	local node = self._head
+	if node == nil then
 		return
 	end
-	local snapshot = table.clone(connections)
+	local lastId = self._nextId - 1
 	local onError = self._onError
-	for _, connection in snapshot do
-		if connection.Connected then
-			if connection._once then
-				connection:Disconnect()
+	while node ~= nil and node._id <= lastId do
+		if node.Connected then
+			if node._once then
+				node:Disconnect()
 			end
-			task.spawn(runListener, onError, connection._callback, ...)
+			dispatch(onError, node._callback, ...)
 		end
+		node = node._next
 	end
 end
 
 function SignalClass.DisconnectAll(self: any)
-	for _, connection in self._connections do
-		connection.Connected = false
+	local node = self._head
+	while node ~= nil do
+		node.Connected = false
+		node = node._next
 	end
-	table.clear(self._connections)
+	self._head = nil
+	self._tail = nil
+	self._count = 0
 end
 
 function SignalClass.Destroy(self: any)
@@ -145,7 +199,7 @@ function SignalClass.Destroy(self: any)
 end
 
 function SignalClass.GetConnectionCount(self: any): number
-	return #self._connections
+	return self._count
 end
 
 function SignalClass.IsDestroyed(self: any): boolean
@@ -169,7 +223,10 @@ function Signal.new<T...>(options: Options?): Signal<T...>
 		end
 	end
 	local self = setmetatable({
-		_connections = {},
+		_head = nil,
+		_tail = nil,
+		_count = 0,
+		_nextId = 1,
 		_destroyed = false,
 		_onError = onError,
 	}, SignalClass)

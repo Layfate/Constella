@@ -125,12 +125,13 @@ export type Spec = {
 export type Results = {
 	passed: number,
 	failed: number,
+	skipped: number,
 	failures: { { name: string, message: string } },
 }
 
 function TestKit.run(specs: { Spec }, Constella: any, options: { Silent: boolean? }?): Results
 	local silent = options ~= nil and options.Silent == true
-	local results: Results = { passed = 0, failed = 0, failures = {} }
+	local results: Results = { passed = 0, failed = 0, skipped = 0, failures = {} }
 
 	local function record(name: string, ok: boolean, message: string?)
 		if ok then
@@ -161,6 +162,15 @@ function TestKit.run(specs: { Spec }, Constella: any, options: { Silent: boolean
 
 		t.expect = expect
 
+		--- Records a test as skipped (for example when an optional
+		--- dependency is not installed) instead of running it.
+		function t.skip(name: string, reason: string)
+			results.skipped += 1
+			if not silent then
+				print(("[SKIP] %s > %s (%s)"):format(table.concat(scope, " > "), name, reason))
+			end
+		end
+
 		local collected, collectError = pcall(spec.run, t, Constella)
 		if not collected then
 			record(spec.name .. " (collecting tests)", false, tostring(collectError))
@@ -176,6 +186,9 @@ function TestKit.run(specs: { Spec }, Constella: any, options: { Silent: boolean
 
 	if not silent then
 		local summary = ("[Constella tests] %d passed, %d failed"):format(results.passed, results.failed)
+		if results.skipped > 0 then
+			summary ..= (", %d skipped"):format(results.skipped)
+		end
 		if results.failed > 0 then
 			warn(summary)
 		else
