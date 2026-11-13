@@ -21,7 +21,7 @@ This stage proved that what exists works well. No new modules were added.
 
 - **Data:** ✅ tested against real ProfileStore 1.0.3 in its mock mode, including save completion and shutdown.
 - **Pool:** ✅ instance reuse benchmarked (1.7–2× faster than clone and destroy).
-- **Benchmarks:** ✅ see [Benchmarks](Benchmarks.md). They led to a 3–4× faster Signal, a further 5–6% on `Fire` from inlined dispatch, and 4× less Cleanup memory.
+- **Benchmarks:** ✅ see [Benchmarks](Benchmarks.md). They led to a 3–4× faster Signal, a further 3–5% on `Fire` from inlined dispatch, and 4× less Cleanup memory.
 - **Strict type check:** ✅ clean under luau-lsp with Roblox types, and enforced in CI along with StyLua and selene.
 - **Reviews:** ✅ two code reviews; every fix has a regression test (see the [changelog](../CHANGELOG.md)).
 

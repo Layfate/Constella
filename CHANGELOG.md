@@ -19,7 +19,8 @@ Verification and performance release: fixes from two code reviews (each with a r
 ### Changed
 - **Signal:** listener threads are recycled and connections live in a linked list, instead of creating a new coroutine per listener and copying the list on every `Fire`. `Fire` is 3–4× faster; ordering, snapshot and error-isolation behaviour are unchanged.
 - **Cleanup:** plain resources are stored in two parallel arrays instead of a table each, using about 4× less memory.
-- **Signal:** `Fire` dispatches listeners inline and hands each runner thread the connection itself, so it is about 5–6% faster. Memory per connection (160 bytes), ordering, snapshot and error-isolation behaviour are unchanged.
+- **Signal:** `Fire` dispatches listeners inline instead of through a helper call, so it is about 3–5% faster. Memory per connection (160 bytes), ordering, snapshot and error-isolation behaviour are unchanged.
+- **Tests:** the Signal runner-retention test repeats its scenario 5 times, so intermittent retention fails it reliably.
 
 ### Added
 - **Data:** `ProfileStoreAdapter.new(ProfileStore, { Mock = true })` uses ProfileStore's in-memory mock store, so tests never touch real data.
