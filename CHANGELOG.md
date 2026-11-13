@@ -16,6 +16,7 @@ Fixes from two code reviews, plus verification and performance work. Each fix ha
 ### Changed
 - **Signal:** listener threads are recycled and connections live in a linked list, instead of creating a new coroutine per listener and copying the list on every `Fire`. `Fire` is 3–4× faster; ordering, snapshot and error-isolation behaviour are unchanged.
 - **Cleanup:** plain resources are stored in two parallel arrays instead of a table each, using about 4× less memory.
+- **Signal:** `Fire` dispatches listeners inline and hands each runner thread the connection itself, so it is about 5–6% faster. Memory per connection (160 bytes), ordering, snapshot and error-isolation behaviour are unchanged.
 
 ### Added
 - **Data:** `ProfileStoreAdapter.new(ProfileStore, { Mock = true })` uses ProfileStore's in-memory mock store, so tests never touch real data.
@@ -23,6 +24,8 @@ Fixes from two code reviews, plus verification and performance work. Each fix ha
 - **Benchmarks:** `benchmarks/` suite and [docs/Benchmarks.md](docs/Benchmarks.md), comparing with sleitnick/signal, sleitnick/trove and plain Roblox approaches.
 - **Network:** `MaxInFlight` on client functions (default 8) bounds outstanding `InvokeServer` calls, counting timed-out ones that haven't returned. Beyond it, `Invoke` fails fast with `"TooManyRequests"`. Also adds `fn:GetInFlight()`.
 - **Core:** `WaitForStart` and `StartTimeout` let critical services act as a readiness gate. `App:Start` waits for their `Start` to finish, and any error or timeout fails startup with a rollback.
+- **CI:** a GitHub Actions workflow checks formatting (StyLua), lint (selene) and Roblox types (luau-lsp, strict) on every push and pull request.
+- **Benchmarks:** the report also lists every run's result, not just the median, best and worst.
 
 ## 0.1.0 — 2026-11-13
 
