@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://github.com/Layfate/Constella/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Layfate/Constella/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7c6cf0"></a>
-  <a href="CHANGELOG.md"><img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-4fb4f0"></a>
+  <a href="CHANGELOG.md"><img alt="Version 0.2.0" src="https://img.shields.io/badge/version-0.2.0-4fb4f0"></a>
   <img alt="Luau: strict" src="https://img.shields.io/badge/luau-strict-5b7cfa">
   <img alt="Platform: Roblox" src="https://img.shields.io/badge/platform-Roblox-3b3f63">
 </p>
@@ -29,7 +29,7 @@
 ```toml
 # wally.toml
 [dependencies]
-Constella = "zense/constella@0.1.0"
+Constella = "zense/constella@0.2.0"
 ```
 
 Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
@@ -169,7 +169,7 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 
 ```toml
 [dependencies]
-Constella = "zense/constella@0.1.0"
+Constella = "zense/constella@0.2.0"
 ```
 
 **pesde.**
