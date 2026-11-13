@@ -1,0 +1,15 @@
+# Build output
+/build
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+*.rbxl.lock
+*.rbxlx.lock
+
+# Package managers
+/Packages
+/ServerPackages
+/DevPackages
+/roblox_packages
+sourcemap.json

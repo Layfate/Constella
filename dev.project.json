@@ -1,0 +1,35 @@
+{
+	"name": "Constella Dev Place",
+	"tree": {
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"Packages": {
+				"$className": "Folder",
+				"Constella": {
+					"$path": "src/shared/Constella"
+				}
+			}
+		},
+		"ServerScriptService": {
+			"ConstellaDemo": {
+				"$path": "src/server"
+			},
+			"ConstellaExamples": {
+				"$path": "examples"
+			},
+			"ConstellaTests": {
+				"$path": "tests/server"
+			}
+		},
+		"StarterPlayer": {
+			"StarterPlayerScripts": {
+				"ConstellaDemo": {
+					"$path": "src/client"
+				},
+				"ConstellaTests": {
+					"$path": "tests/client"
+				}
+			}
+		}
+	}
+}
