@@ -20,12 +20,12 @@ Scope notes:
 This stage proves that what exists works well. No new modules are planned.
 
 - **Data:** ✅ tested against real ProfileStore 1.0.3 in its mock mode, including save completion and shutdown. ⏳ Still to do: run it against live DataStores in a separate published experience (disconnects, shutdowns, rejoining a second server, high player counts). Data stays beta until then.
-- **Pool:** ✅ instance reuse benchmarked (about half the cost of clone and destroy). ⏳ Memory over long sessions isn't measured yet.
+- **Pool:** ✅ instance reuse benchmarked (1.7–2× faster than clone and destroy). ⏳ Memory over long sessions isn't measured yet.
 - **Random:** add statistical distribution tests (chi-squared) on top of the existing tolerance tests. Document a pattern for server-authoritative reward flows.
-- **Benchmarks:** ✅ done. See [Benchmarks](Benchmarks.md). They led to a 3–4× faster Signal and 4× less Cleanup memory.
-- **Script Analysis pass**, to fix strict-mode type warnings.
+- **Benchmarks:** ✅ done. See [Benchmarks](Benchmarks.md). They led to a 3–4× faster Signal, a further 5–6% on `Fire` from inlined dispatch, and 4× less Cleanup memory.
+- **Strict type check:** ✅ clean under luau-lsp with Roblox types, and enforced in CI along with StyLua and selene.
 
 ## Toward 1.0
 
-- A headless test runner for CI (Lune or run-in-roblox).
+- A headless test runner, so CI also runs the test suite (Lune or run-in-roblox).
 - API freeze, then semantic versioning for every breaking change.
