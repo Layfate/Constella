@@ -73,7 +73,7 @@ local function saveAndWait(profile: any, trigger: () -> (), timeout: number): (b
 		onAfterSave:Disconnect()
 	end
 
-	local ok, err = pcall(trigger)
+	local ok, err = pcall(trigger :: any)
 	if not ok then
 		disconnect()
 		return false, tostring(err)

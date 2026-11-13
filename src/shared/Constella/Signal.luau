@@ -61,7 +61,7 @@ local freeRunner: thread? = nil
 local function runOnRunner(onError: (string) -> (), callback: (...any) -> (), ...: any)
 	local runner = freeRunner
 	freeRunner = nil
-	local ok, message = xpcall(callback, traceback, ...)
+	local ok, message = xpcall(callback :: any, traceback, ...)
 	if not ok then
 		onError(message)
 	end
@@ -136,6 +136,8 @@ local function append(self: any, callback: any, once: boolean, method: string): 
 	local id = self._nextId
 	self._nextId = id + 1
 	local tail = self._tail
+	-- Array slots keep connections compact; Connected is the public field.
+	-- selene: allow(mixed_table)
 	local connection = setmetatable({
 		callback,
 		self,

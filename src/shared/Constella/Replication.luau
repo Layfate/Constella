@@ -122,7 +122,7 @@ function ServerClass._report(self: any, message: string)
 	self._onError(PREFIX .. message)
 end
 
-function ServerClass._audience(self: any, share: any): { any }
+function ServerClass._audience(_self: any, share: any): { any }
 	if share.player ~= nil then
 		return { share.player }
 	end
@@ -135,7 +135,8 @@ function ServerClass._validate(self: any, value: any): string?
 	if reason ~= nil then
 		return reason
 	end
-	local size, sizeReason = Network.Payload.measure({ MaxBytes = self._maxBytes, MaxDepth = 16, MaxNodes = 4096 }, value)
+	local size, sizeReason =
+		Network.Payload.measure({ MaxBytes = self._maxBytes, MaxDepth = 16, MaxNodes = 4096 }, value)
 	if size == nil then
 		return sizeReason
 	end
@@ -252,7 +253,7 @@ end
 
 --- Replicates `state` to `player` only. Removed when the player leaves.
 function ServerClass.ShareWith(self: any, player: Player, name: string, state: any): Share
-	if player == nil then
+	if (player :: any) == nil then
 		error(PREFIX .. "ShareWith needs a player", 2)
 	end
 	return self:_addShare(player, name, state, 3)

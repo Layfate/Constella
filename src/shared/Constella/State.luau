@@ -73,7 +73,9 @@ local function flushRounds()
 		rounds += 1
 		if rounds > MAX_FLUSH_ROUNDS then
 			error(
-				("[Constella.State] Update loop detected: states kept changing after %d rounds"):format(MAX_FLUSH_ROUNDS),
+				("[Constella.State] Update loop detected: states kept changing after %d rounds"):format(
+					MAX_FLUSH_ROUNDS
+				),
 				0
 			)
 		end
@@ -90,7 +92,7 @@ end
 
 local function flush()
 	batchDepth += 1
-	local ok, err = pcall(flushRounds)
+	local ok, err = pcall(flushRounds :: any)
 	batchDepth -= 1
 	if not ok then
 		pendingOrder, pendingOld = {}, {}
@@ -300,7 +302,7 @@ function State.batch(fn: () -> ())
 		error(("[Constella.State] batch expects a function, got %s"):format(typeof(fn)), 2)
 	end
 	batchDepth += 1
-	local ok, err = pcall(fn)
+	local ok, err = pcall(fn :: any)
 	batchDepth -= 1
 	if batchDepth == 0 then
 		flush()
@@ -356,7 +358,7 @@ function State.bind(instance: Instance, property: string, source: any, transform
 		target[property] = if transform then transform(value) else value
 	end
 
-	local ok, err = pcall(apply, source._value)
+	local ok, err = pcall(apply :: any, source._value)
 	if not ok then
 		error(("[Constella.State] Cannot bind %s.%s: %s"):format(instance:GetFullName(), property, tostring(err)), 2)
 	end
