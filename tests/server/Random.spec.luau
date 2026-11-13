@@ -199,4 +199,70 @@ return function(t, Constella)
 			expect(R.chooseIndex({ 0, 3, 1 }, fixed(0.9))).toBe(3)
 		end)
 	end)
+
+	t.describe("statistics", function()
+		-- Pearson's chi-squared goodness-of-fit test. With a fixed seed the
+		-- result is deterministic; the threshold is the 99.9th percentile of
+		-- the chi-squared distribution, so a correct implementation passes
+		-- and a biased one (e.g. an off-by-one in the cumulative search)
+		-- fails by a wide margin.
+		local function chiSquared(observed, expected)
+			local sum = 0
+			for key, expectedCount in expected do
+				local difference = (observed[key] or 0) - expectedCount
+				sum += difference * difference / expectedCount
+			end
+			return sum
+		end
+
+		t.it("matches the weights (chi-squared, 3 degrees of freedom)", function()
+			local loot = R.lootTable({
+				{ Value = "a", Weight = 50 },
+				{ Value = "b", Weight = 30 },
+				{ Value = "c", Weight = 15 },
+				{ Value = "d", Weight = 5 },
+			})
+			local rolls = 50000
+			local observed = {}
+			for _, value in loot:RollMany(rolls, Random.new(20261113)) do
+				observed[value] = (observed[value] or 0) + 1
+			end
+			local expected = { a = rolls * 0.5, b = rolls * 0.3, c = rolls * 0.15, d = rolls * 0.05 }
+			expect(chiSquared(observed, expected)).toBeLessThan(16.27) -- p = 0.001, df = 3
+		end)
+
+		t.it("matches the Luck formula (chi-squared, 2 degrees of freedom)", function()
+			local loot = R.lootTable({
+				{ Value = "common", Weight = 75 },
+				{ Value = "rare", Weight = 20 },
+				{ Value = "legendary", Weight = 5 },
+			})
+			local rolls = 50000
+			local observed = {}
+			for _, value in loot:RollMany(rolls, Random.new(7), { Luck = 0.5 }) do
+				observed[value] = (observed[value] or 0) + 1
+			end
+			local expected = {}
+			for _, chance in loot:GetChances({ Luck = 0.5 }) do
+				expected[chance.Value] = rolls * chance.Chance
+			end
+			expect(chiSquared(observed, expected)).toBeLessThan(13.82) -- p = 0.001, df = 2
+		end)
+
+		t.it("shuffle places every item in every position equally often", function()
+			local rng = Random.new(99)
+			local counts = {}
+			local shuffles = 24000
+			for _ = 1, shuffles do
+				local result = R.shuffle({ 1, 2, 3, 4 }, rng)
+				local key = result[1] .. ":1"
+				counts[key] = (counts[key] or 0) + 1
+			end
+			local expected = {}
+			for item = 1, 4 do
+				expected[item .. ":1"] = shuffles / 4
+			end
+			expect(chiSquared(counts, expected)).toBeLessThan(16.27) -- p = 0.001, df = 3
+		end)
+	end)
 end

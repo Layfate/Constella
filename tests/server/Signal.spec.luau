@@ -175,4 +175,65 @@ return function(t, Constella)
 		expect(Signal.is(Signal.new())).toBe(true)
 		expect(Signal.is({})).toBe(false)
 	end)
+
+	-- True once the garbage collector has freed every object in `weak`.
+	-- Roblox cannot force a collection, so this allocates throwaway tables
+	-- to keep the incremental collector running, with a time limit.
+	local function collected(weak, timeout)
+		local deadline = os.clock() + (timeout or 10)
+		while next(weak) ~= nil and os.clock() < deadline do
+			for _ = 1, 20000 do
+				local _ = { 1, 2, 3 }
+			end
+			task.wait()
+		end
+		return next(weak) == nil
+	end
+
+	t.describe("memory", function()
+		t.it("frees disconnected listeners while the signal stays alive", function()
+			local signal = Signal.new()
+			local weak = setmetatable({}, { __mode = "k" })
+			do
+				local connections = {}
+				for index = 1, 200 do
+					local listener = function()
+						return index
+					end
+					weak[listener] = true
+					table.insert(connections, signal:Connect(listener))
+				end
+				signal:Fire("payload")
+				for _, connection in connections do
+					connection:Disconnect()
+				end
+			end
+			expect(collected(weak)).toBe(true)
+			expect(signal:GetConnectionCount()).toBe(0)
+		end)
+
+		t.it("does not keep fired arguments alive on a new runner thread", function()
+			-- Keep the current runner busy so the next Fire has to create a
+			-- fresh runner thread; that runner then stays alive as the free
+			-- runner. It must not pin the arguments of the call it started with.
+			local release = Signal.new()
+			local blocker = Signal.new()
+			blocker:Connect(function()
+				release:Wait()
+			end)
+			blocker:Fire()
+
+			local signal = Signal.new()
+			signal:Connect(function() end)
+			local weak = setmetatable({}, { __mode = "k" })
+			do
+				local payload = {}
+				weak[payload] = true
+				signal:Fire(payload)
+			end
+			local freed = collected(weak)
+			release:Fire()
+			expect(freed).toBe(true)
+		end)
+	end)
 end
