@@ -1,0 +1,13 @@
+[package]
+# The scope must match the Wally account the package is published from.
+name = "zense/constella"
+description = "A modular Luau toolkit for Roblox by Zense: app lifecycle, signals, cleanup, reactive state, secure networking, components, pools, zones, promises, player data and replication."
+version = "0.1.0"
+authors = ["Zense"]
+license = "MIT"
+repository = "https://github.com/Layfate/Constella"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+include = ["src/shared/Constella", "src/shared/Constella/**", "default.project.json", "wally.toml", "LICENSE", "README.md"]
+
+[dependencies]

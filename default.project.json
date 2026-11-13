@@ -1,0 +1,6 @@
+{
+	"name": "Constella",
+	"tree": {
+		"$path": "src/shared/Constella"
+	}
+}
