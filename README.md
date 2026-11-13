@@ -1,157 +1,206 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo-512.png">
-    <img src="assets/logo-512-panel.png" alt="Constella logo" width="180">
+    <img src="assets/logo-512-panel.png" alt="Constella logo" width="160">
   </picture>
 </p>
 
 <h1 align="center">Constella</h1>
 
-<p align="center"><b>Made by Zense.</b><br>A modular Luau toolkit for Roblox.</p>
+<p align="center">
+  <b>A modular, strictly typed Luau toolkit for Roblox.</b><br>
+  Use one utility on its own, or build your whole game on it.
+</p>
 
-Use one utility on its own, or combine them into an explicit app with dependency-ordered services.
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7c6cf0"></a>
+  <a href="CHANGELOG.md"><img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-4fb4f0"></a>
+  <img alt="Luau: strict" src="https://img.shields.io/badge/luau-strict-5b7cfa">
+  <img alt="Platform: Roblox" src="https://img.shields.io/badge/platform-Roblox-3b3f63">
+</p>
+
+<p align="center">Made by <b>Zense</b></p>
+
+📖 **[Documentation → docs/](docs/README.md)**<br>
+🧪 **[Examples → one script per module](examples/)**<br>
+🗺️ **[Roadmap](docs/Roadmap.md)**
+
+```toml
+# wally.toml
+[dependencies]
+Constella = "zense/constella@0.1.0"
+```
+
+Also available with pesde (`pesde add zense/constella`) or as a model file. See [Installation](#installation).
+
+- **Use only what you need.** Every module loads on first use. `require(Constella.Signal)` loads Signal and nothing else, and no system starts unless you start it.
+- **Safe networking by default.** Every client request passes rate limiting, payload caps, schema validation and your authorization check before your code runs. Clients only ever see generic error codes; the details stay on the server.
+- **An explicit architecture.** Apps start services in dependency order, catch duplicates, missing dependencies and cycles before any code runs, keep client and server code apart, and roll back cleanly if startup fails. No globals, no singletons, no auto-discovery.
+- **Player data that fails closed.** Migrations, template reconciliation and session-loss handling sit on top of ProfileStore's session locking. A failed load never overwrites saved data.
+- **Tested in Studio.** 208 unit tests, Data failure simulations, and Play-mode integration tests with a hostile client against real remotes.
+
+> [!IMPORTANT]
+> `Constella.Data` is **beta**. It runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately, and it hasn't been tested against real ProfileStore yet. Test it in a separate experience before real player data depends on it. See [Data](docs/Data.md).
+
+## Modules
+
+| | Module | What it does |
+| --- | --- | --- |
+| **Architecture** | [Core / App](docs/Core.md) | Services and controllers with dependency-ordered Init/Start/Stop and injection |
+| **Utilities** | [Signal](docs/Signal.md) | Custom events with deterministic dispatch and error isolation |
+| | [Cleanup](docs/Cleanup.md) | Owns connections, instances, threads and promises, and disposes them together |
+| | [State](docs/State.md) | Reactive values, computed state, batching and UI bindings |
+| | [Promise](docs/Promise.md) | Async chaining, cancellation, timeouts and retries |
+| | [Random](docs/Random.md) | Weighted rolls, loot tables and luck, with the math documented |
+| | [Debug](docs/Debug.md) | Structured logging and metrics, with almost no cost when switched off |
+| **Game systems** | [Network](docs/Network.md) | Server-owned remotes with validation, rate limits and payload caps |
+| | [Replication](docs/Replication.md) | Server→client State, only when the server explicitly shares it |
+| | [Component](docs/Component.md) | Behaviour attached to CollectionService tags |
+| | [Pool](docs/Pool.md) | Bounded object reuse for projectiles and effects |
+| | [Zone](docs/Zone.md) | Enter/exit detection for players and parts |
+| | [Data](docs/Data.md) | Player profiles on ProfileStore *(beta, server only)* |
+
+## Quick start
+
+Utilities work on their own, with no setup:
 
 ```lua
-local Constella = require(game.ReplicatedStorage.Packages.Constella)
+-- Any Script or LocalScript
+local Constella = require(game:GetService("ReplicatedStorage").Packages.Constella)
 
 local cleanup = Constella.Cleanup.new()
-local state = Constella.State.new(0)
-cleanup:Add(state:Subscribe(function(newValue) print(newValue) end))
-state:Set(10) --> 10
+local health = Constella.State.new(100)
+cleanup:Add(health:Subscribe(function(new, old)
+	print("Health", old, "->", new)
+end))
+health:Set(80)
 
 local rarity = Constella.Random.choose({
 	{ Value = "Common", Weight = 75 },
 	{ Value = "Rare", Weight = 20 },
 	{ Value = "Legendary", Weight = 5 },
-}, Random.new(1234))
-print(rarity)
+}, Random.new(1234)) -- seeded: the same roll every time
+
+cleanup:Destroy() -- disconnects everything it owns
 ```
 
-- **Nothing runs unless you ask.** Modules load lazily on first access, and `require(Constella.Signal)` loads only Signal.
-- **No hidden globals or singletons.** Apps are explicit objects you create and start.
-- **Clear boundaries.** Server-only definitions can't be added to a client app, and client-only ones can't be added to a server app.
-- **Strict Luau** with exported types on every public API.
+For a whole game, write services and start them with an app. This service keeps each player's coins on the server, shows them to that player only, and sells items through a validated, rate-limited remote:
 
-## Status (v0.1.0)
+```lua
+-- ServerScriptService/Services/CoinService.luau
+local Players = game:GetService("Players")
+local Constella = require(game:GetService("ReplicatedStorage").Packages.Constella)
+local Check = Constella.Network.Check
 
-| Module | Status | What it does |
-| --- | --- | --- |
-| [Core / App](docs/Core.md) | ✅ Implemented | Services/controllers, dependency order, Init/Start/Stop, injection |
-| [Signal](docs/Signal.md) | ✅ Implemented | Custom events with deterministic dispatch |
-| [Cleanup](docs/Cleanup.md) | ✅ Implemented | Resource ownership and disposal |
-| [State](docs/State.md) | ✅ Implemented | Reactive values, computed state, batching |
-| [Random](docs/Random.md) | ✅ Implemented | Weighted rolls, loot tables, luck |
-| [Network](docs/Network.md) | ✅ Implemented | Server-owned remotes with validation, rate limits and payload caps |
-| [Component](docs/Component.md) | ✅ Implemented | Tag-based behaviours with ancestry safety |
-| [Pool](docs/Pool.md) | ✅ Implemented | Bounded object reuse |
-| [Zone](docs/Zone.md) | ✅ Implemented | Enter/exit detection in boxes and spheres |
-| [Debug](docs/Debug.md) | ✅ Implemented | Structured logging and metrics |
-| [Promise](docs/Promise.md) | ✅ Implemented | Async chaining, cancellation, timeouts, retries |
-| [Data](docs/Data.md) | 🧪 Beta (server only) | Player profiles on ProfileStore: migrations, reconciliation, session loss, shutdown budget |
-| [Replication](docs/Replication.md) | ✅ Implemented | Explicit server→client State replication |
-| [State UI bindings](docs/State.md#ui-bindings) | ✅ Implemented | `State.bind(instance, property, state)` |
+local PRICES = { Sword = 10, Shield = 50 }
 
-All 12 planned modules exist. See the [roadmap](docs/Roadmap.md) for what's left before 1.0.
+local CoinService = { Name = "CoinService", Environment = "Server" }
 
-> **Data safety:** `Constella.Data` doesn't implement its own DataStore session locking. Use it with `ProfileStoreAdapter`, which needs you to install ProfileStore. Constella's layer is tested against a simulated backend, and the adapter against a stand-in for ProfileStore's API. Before using it with real players, test it with real ProfileStore in a separate experience: simulate disconnects, shutdowns, rejoins and high player counts.
+function CoinService:Init(context)
+	local replicator = context.Cleanup:Add(Constella.Replication.Server.new("Coins"))
+	local network = context.Cleanup:Add(Constella.Network.Server.new("Shop"))
+	local coins = {}
 
-## Install
+	context.Cleanup:Connect(Players.PlayerAdded, function(player)
+		coins[player] = Constella.State.new(100)
+		replicator:ShareWith(player, "Coins", coins[player]) -- visible to this player only
+	end)
+	context.Cleanup:Connect(Players.PlayerRemoving, function(player)
+		local balance = coins[player]
+		coins[player] = nil
+		if balance then
+			balance:Destroy()
+		end
+	end)
 
-**Wally:** add the following to `wally.toml`, then run `wally install`:
+	-- Clients may only send "Sword" or "Shield", at most twice per second.
+	network:Function("Buy", {
+		Schema = { Check.literal("Sword", "Shield") },
+		RateLimit = { Count = 2, Per = 1 },
+	}):SetHandler(function(player, item)
+		local balance, price = coins[player], PRICES[item]
+		if not balance or balance:Get() < price then
+			return false
+		end
+		balance:Update(function(current)
+			return current - price
+		end)
+		return true
+	end)
+end
+
+return CoinService
+```
+
+```lua
+-- ServerScriptService/Main.server.luau
+local Constella = require(game:GetService("ReplicatedStorage").Packages.Constella)
+
+local app = Constella.App.new()
+app:AddModules(script.Parent.Services) -- only this folder, never auto-discovered
+app:Start()
+game:BindToClose(function()
+	app:Stop()
+end)
+```
+
+```lua
+-- StarterPlayer/StarterPlayerScripts/Shop.client.luau
+local Constella = require(game:GetService("ReplicatedStorage").Packages.Constella)
+
+local coins = Constella.Replication.Client.new("Coins"):Get("Coins") -- read-only
+coins:Observe(function(value)
+	print("Coins:", value)
+end)
+
+local buy = Constella.Network.Client.new("Shop"):Function("Buy", { Timeout = 5 })
+local ok, bought = buy:Invoke("Sword") -- ok is false on a rejection, rate limit or timeout
+print("Bought a sword:", ok and bought)
+```
+
+A complete demo game, with saved data, a coins UI and a shop, lives in [`src/server`](src/server) and [`src/client`](src/client). Each module also has a short example in [`examples/`](examples/).
+
+## Installation
+
+**Wally.** Add Constella to `wally.toml`, then run `wally install`:
+
 ```toml
 [dependencies]
 Constella = "zense/constella@0.1.0"
 ```
 
-**pesde:** `pesde add zense/constella`
+**pesde.**
 
-**Rojo (from source):** copy `src/shared/Constella` into your project, or build a model:
-```sh
+```bash
+pesde add zense/constella
+```
+
+**Model file.** Build it with Rojo, then insert `Constella.rbxm` into `ReplicatedStorage.Packages`:
+
+```bash
 rojo build default.project.json -o Constella.rbxm
 ```
-Then insert `Constella.rbxm` into `ReplicatedStorage.Packages`.
 
-**Manual:** in Studio, create a ModuleScript named `Constella` in `ReplicatedStorage.Packages`. Paste `init.luau` into it, then add every other file in `src/shared/Constella` as a child ModuleScript with the same name. `Network` is itself a ModuleScript (its `init.luau`) with its own children.
+<details>
+<summary><b>Manual install (no tools)</b></summary>
 
-> The `zense/` scope must match the Wally and pesde accounts the package is published from.
+1. In Studio, create a Folder named `Packages` in `ReplicatedStorage`.
+2. Inside it, create a ModuleScript named `Constella` and paste in [`src/shared/Constella/init.luau`](src/shared/Constella/init.luau).
+3. For every other file in [`src/shared/Constella`](src/shared/Constella), add a child ModuleScript with the same name (without `.luau`).
+4. `Network` and `Data` are folders: give each one a ModuleScript holding its `init.luau`, with the rest of its files as children.
 
-## An app in 20 lines
+</details>
 
-```lua
--- ServerScriptService/Services/GreetingService.luau
-local GreetingService = {
-	Name = "GreetingService",
-	Environment = "Server",
-	Dependencies = { "PlayerDataService" },
-}
+## Development
 
-function GreetingService:Init(context)
-	local data = context:Get("PlayerDataService") -- only declared dependencies are reachable
-	context.Cleanup:Connect(data.Store.Loaded, function(player)
-		print("Welcome", player.Name)
-	end)
-end
-
-return GreetingService
+```bash
+rokit install                  # rojo, wally, selene, stylua
+rojo serve dev.project.json    # dev place: package, demo, examples and tests
+selene src tests examples      # lint
+stylua src tests examples      # format
 ```
 
-```lua
--- ServerScriptService/Main.server.luau
-local app = Constella.App.new()
-app:AddModules(script.Parent.Services) -- explicit: only this folder
-app:Start()
-game:BindToClose(function() app:Stop() end)
-```
-
-The full demo is in [src/server](src/server) and [src/client](src/client).
-
-## Repository layout
-
-```
-src/shared/Constella/   the package (ReplicatedStorage.Packages.Constella)
-src/server/             demo server app (player data, rewards, a networked shop)
-src/client/             demo client app (replicated coins label, shop client)
-examples/               one zero-setup script per module
-tests/server/           Studio test suite (TestKit + *.spec modules) + integration tests (server halves)
-tests/client/           Network and Replication integration tests (client halves)
-docs/                   reference docs
-assets/                 logo (full size, 512 px, and a 512 px dark-panel version for light themes)
-default.project.json    package build (Wally / pesde / .rbxm)
-dev.project.json        full dev place: package + demo + examples + tests
-```
-
-## Develop and test
-
-```sh
-rokit install                      # rojo, wally, selene, stylua
-rojo serve dev.project.json        # then connect from the Rojo Studio plugin
-# or: rojo build dev.project.json -o ConstellaDev.rbxl
-```
-
-Press **Play** in Studio. The test suite runs automatically and prints `[Constella tests] N passed, M failed`. Failures appear as warnings with tracebacks. Two integration tests also run:
-
-- **Network:** a client sends valid, malformed, forged and excessive requests through real remotes.
-- **Replication:** a client checks that it sees its own private values and never another player's, and that public updates reach a UI label through `State.bind`.
-
-Each prints `[Constella integration] ... PASS`. To run the suite without playing, use the command bar:
-
-```lua
-require(game.ServerScriptService.ConstellaTests.RunTests)()
-```
-
-Lint and format with `selene src tests examples` and `stylua src tests examples`.
-
-## Known limitations (v0.1.0)
-
-- The tests run inside Roblox Studio only. There is no headless/CI runner yet.
-- State uses explicit dependency lists (`State.computed({ a, b }, fn)`), not automatic tracking. Compute functions and batches must not yield.
-- Each Signal listener runs on a new thread through `task.spawn`. There's no thread reuse yet, and no benchmarks exist.
-- Network payload sizes are conservative estimates, not Roblox's exact wire sizes. Validation checks shape, so your handlers still decide what's allowed in game.
-- Zone tests points, not volumes, and each zone has its own Heartbeat connection.
-- Tests that need several real players (rejoins, many clients) are covered with stand-in players in unit tests, not with real clients.
-- `Data` is beta. There's no custom DataStore backend; production use relies on ProfileStore, and the ProfileStore adapter hasn't been run against real ProfileStore here. `MemoryAdapter` isn't persistent.
-- The unhandled-rejection reporter in Promise is set for the whole process (`Promise.setUnhandledRejectionHandler`).
-- No performance claims are made against Knit, Trove, GoodSignal, Fusion or similar libraries, because no benchmarks have been run.
+Press **Play** in the dev place to run the full test suite and both integration tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for how tests are structured and what a pull request needs.
 
 ## License
 
