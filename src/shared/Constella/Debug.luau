@@ -88,7 +88,7 @@ end
 
 local function formatValue(value: any): string
 	if type(value) == "string" then
-		if string.find(value, "[%s=\"]") then
+		if string.find(value, '[%s="]') then
 			return ("%q"):format(value)
 		end
 		return value

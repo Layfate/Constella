@@ -56,14 +56,14 @@ export type Pool<T> = {
 	Destroy: (self: any) -> (),
 }
 
+type InstancesOptions = { Reset: ((any) -> ())?, MaxIdle: number?, MaxActive: number?, Prewarm: number? }
+
 local PREFIX = "[Constella.Pool] "
 local DEFAULT_MAX_IDLE = 64
 
 local function defaultDestroy(object: any)
 	local valueType = typeof(object)
-	if valueType == "Instance" then
-		object:Destroy()
-	elseif valueType == "table" and type(object.Destroy) == "function" then
+	if valueType == "Instance" or (valueType == "table" and type(object.Destroy) == "function") then
 		object:Destroy()
 	end
 end
@@ -76,7 +76,15 @@ local function checkCount(value: any, label: string, allowZero: boolean, level: 
 		or value == math.huge
 		or value < (if allowZero then 0 else 1)
 	then
-		error(PREFIX .. ("%s must be a %s integer, got %s"):format(label, if allowZero then "non-negative" else "positive", tostring(value)), level)
+		error(
+			PREFIX
+				.. ("%s must be a %s integer, got %s"):format(
+					label,
+					if allowZero then "non-negative" else "positive",
+					tostring(value)
+				),
+			level
+		)
 	end
 end
 
@@ -117,7 +125,7 @@ function PoolClass.TryAcquire(self: any): any
 		if not ok then
 			self._active[object] = nil
 			self._activeCount -= 1
-			pcall(dispose, self, object)
+			pcall(dispose :: any, self, object)
 			error(PREFIX .. "OnAcquire failed: " .. tostring(err), 2)
 		end
 	end
@@ -146,7 +154,7 @@ function PoolClass.Release(self: any, object: any)
 	if self._reset then
 		local ok, err = pcall(self._reset, object)
 		if not ok then
-			pcall(dispose, self, object)
+			pcall(dispose :: any, self, object)
 			error(PREFIX .. "Reset failed; the object was destroyed: " .. tostring(err), 2)
 		end
 	end
@@ -176,7 +184,7 @@ function PoolClass.Clear(self: any)
 	self._idle = {}
 	local firstError = nil
 	for _, object in idle do
-		local ok, err = pcall(dispose, self, object)
+		local ok, err = pcall(dispose :: any, self, object)
 		if not ok and firstError == nil then
 			firstError = err
 		end
@@ -250,14 +258,11 @@ end
 
 --- A pool of clones of `template`. Released clones are parented to nil
 --- (after your Reset runs) so they stop rendering and simulating.
-function Pool.instances(
-	template: Instance,
-	options: { Reset: ((any) -> ())?, MaxIdle: number?, MaxActive: number?, Prewarm: number? }?
-): Pool<any>
+function Pool.instances(template: Instance, options: InstancesOptions?): Pool<any>
 	if typeof(template) ~= "Instance" then
 		error(PREFIX .. ("Pool.instances expects an Instance template, got %s"):format(typeof(template)), 2)
 	end
-	local opts = options or {}
+	local opts: InstancesOptions = options or {}
 	local userReset = opts.Reset
 	return Pool.new({
 		Create = function()

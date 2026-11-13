@@ -20,7 +20,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install tools (pinned versions)
         run: |
@@ -61,27 +61,3 @@ jobs:
             --definitions=@roblox="$RUNNER_TEMP/globalTypes.d.luau" \
             --base-luaurc=.luaurc \
             src tests examples benchmarks
-
-  # Temporary: produces StyLua's formatting changes as a patch artifact so
-  # they can be reviewed and committed. Removed once the code is formatted.
-  format-patch:
-    name: Formatting patch (temporary)
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run StyLua and save the diff
-        run: |
-          cd "$RUNNER_TEMP"
-          gh release download "$STYLUA_VERSION" --repo JohnnyMorganz/StyLua --pattern 'stylua-linux-x86_64.zip'
-          unzip -o -q stylua-linux-x86_64.zip
-          chmod +x stylua
-          cd "$GITHUB_WORKSPACE"
-          "$RUNNER_TEMP/stylua" src tests examples benchmarks
-          git diff > "$RUNNER_TEMP/format.patch"
-          wc -l "$RUNNER_TEMP/format.patch"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: format-patch
-          path: ${{ runner.temp }}/format.patch

@@ -106,7 +106,13 @@ local function validateEntries(entries: any, level: number): ({ any }, { number 
 			error(PREFIX .. ("entry #%d must be a table { Value = ..., Weight = number }"):format(index), level)
 		end
 		if entry.Value == nil then
-			error(PREFIX .. ("entry #%d has no Value (use a sentinel such as false or \"Nothing\" for empty drops)"):format(index), level)
+			error(
+				PREFIX
+					.. ('entry #%d has no Value (use a sentinel such as false or "Nothing" for empty drops)'):format(
+						index
+					),
+				level
+			)
 		end
 		checkNumber(entry.Weight, ("entry #%d Weight"):format(index), level + 1)
 		values[index] = entry.Value

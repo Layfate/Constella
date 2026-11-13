@@ -11,7 +11,7 @@ local ShopController = {
 	Environment = "Client",
 }
 
-function ShopController.Start(self: any, _context: any)
+function ShopController.Start(_self: any, _context: any)
 	local shop = Constella.Network.Client.new("Shop")
 	local purchase = shop:Function("Purchase", { Timeout = 5 })
 

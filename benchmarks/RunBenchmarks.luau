@@ -37,13 +37,20 @@ return function(options: { Runs: number? }?): string
 	local runs = (options and options.Runs) or 5
 	local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"))
 	local libs = ServerStorage:FindFirstChild("BenchmarkLibs")
-	local OtherSignal = libs and libs:FindFirstChild("Signal") and require(libs.Signal)
-	local Trove = libs and libs:FindFirstChild("Trove") and require(libs.Trove)
+	local OtherSignal = libs and libs:FindFirstChild("Signal") and require(libs.Signal :: any)
+	local Trove = libs and libs:FindFirstChild("Trove") and require(libs.Trove :: any)
 
 	-- Speed cases ----------------------------------------------------------
 	local cases = {}
 	local function case(group, name, implementation, iterations, run)
-		table.insert(cases, { group = group, name = name, implementation = implementation, iterations = iterations, run = run, samples = {} })
+		table.insert(cases, {
+			group = group,
+			name = name,
+			implementation = implementation,
+			iterations = iterations,
+			run = run,
+			samples = {},
+		})
 	end
 
 	local function signalCases(label, new, wrap)
@@ -307,7 +314,10 @@ return function(options: { Runs: number? }?): string
 
 	-- Report ------------------------------------------------------------------------
 	local lines = {
-		("Runs: %d (each the median of 5 trials). Studio %s."):format(runs, version()),
+		("Runs: %d (each the median of 5 trials). Studio %s."):format(
+			runs,
+			game:GetService("RunService"):GetRobloxVersion()
+		),
 		"",
 		"| Group | Case | Implementation | Median µs/op | Best run | Worst run |",
 		"| --- | --- | --- | ---: | ---: | ---: |",
@@ -315,14 +325,17 @@ return function(options: { Runs: number? }?): string
 	for _, entry in cases do
 		table.sort(entry.samples)
 		local count = #entry.samples
-		table.insert(lines, ("| %s | %s | %s | %.3f | %.3f | %.3f |"):format(
-			entry.group,
-			entry.name,
-			entry.implementation,
-			entry.samples[(count + 1) // 2],
-			entry.samples[1],
-			entry.samples[count]
-		))
+		table.insert(
+			lines,
+			("| %s | %s | %s | %.3f | %.3f | %.3f |"):format(
+				entry.group,
+				entry.name,
+				entry.implementation,
+				entry.samples[(count + 1) // 2],
+				entry.samples[1],
+				entry.samples[count]
+			)
+		)
 	end
 	table.insert(lines, "")
 	table.insert(lines, ("| Memory per object (%d objects) | Implementation | Bytes |"):format(COUNT))

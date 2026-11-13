@@ -52,17 +52,17 @@ function Bench.bytesPerObject(build: (count: number) -> any, count: number, tria
 	for _ = 1, runs do
 		task.wait()
 		local before = gcinfo()
-		local keep = build(count)
+		local _keep = build(count)
 		local after = gcinfo()
 		table.insert(samples, (after - before) * 1024 / count)
-		keep = nil
+		_keep = nil
 	end
 	table.sort(samples)
 	return math.max(0, samples[math.ceil(runs * 0.8)])
 end
 
 function Bench.leakCheck(build: () -> ({ any }, () -> ()), timeoutSeconds: number?): (number, number)
-	local tracked = setmetatable({}, { __mode = "k" })
+	local tracked: { [any]: true } = setmetatable({} :: any, { __mode = "k" })
 	do
 		local objects, release = build()
 		for _, object in objects do

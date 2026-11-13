@@ -263,7 +263,7 @@ function Component.new(definition: Definition, options: Options?): Component
 			error(PREFIX .. ("Definition %s must be a function"):format(field), 2)
 		end
 	end
-	local ancestors = definition.Ancestors or { workspace }
+	local ancestors: { any } = definition.Ancestors or { workspace }
 	if type(ancestors) ~= "table" or #ancestors == 0 then
 		error(PREFIX .. "Ancestors must be a non-empty array of Instances", 2)
 	end

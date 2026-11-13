@@ -4,7 +4,8 @@
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local Component = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"):WaitForChild("Component"))
+local Component =
+	require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"):WaitForChild("Component"))
 
 local Spinner = {
 	Tag = "ConstellaSpinner",
