@@ -349,25 +349,61 @@ return function(t, Constella)
 					if opts.Fail then
 						return nil
 					end
-					local endCallbacks = {}
+					-- Mirrors ProfileStore 1.0.3: Save/EndSession return at once,
+					-- OnSave fires when a save starts, OnSessionEnd fires before
+					-- the final write, OnAfterSave fires after the write.
+					local function newSignal()
+						local listeners = {}
+						return {
+							Connect = function(_, fn)
+								table.insert(listeners, fn)
+								return {
+									Disconnect = function()
+										local index = table.find(listeners, fn)
+										if index then
+											table.remove(listeners, index)
+										end
+									end,
+								}
+							end,
+							Fire = function(_, ...)
+								for _, fn in table.clone(listeners) do
+									task.spawn(fn, ...)
+								end
+							end,
+						}
+					end
 					local profile = { Data = table.clone(template), _active = true }
-					profile.OnSessionEnd = {
-						Connect = function(_, fn)
-							table.insert(endCallbacks, fn)
-						end,
-					}
+					profile.OnSessionEnd = newSignal()
+					profile.OnSave = newSignal()
+					profile.OnAfterSave = newSignal()
 					function profile:IsActive()
 						return self._active
 					end
-					function profile:Save() end
+					local function write(ending)
+						task.spawn(function()
+							profile.OnSave:Fire()
+							if ending then
+								profile._active = false
+								calls.Ended += 1
+								profile.OnSessionEnd:Fire()
+							end
+							task.wait() -- simulated DataStore call
+							calls.Saved = table.clone(profile.Data)
+							profile.OnAfterSave:Fire(calls.Saved)
+						end)
+					end
+					function profile:Save()
+						if self._active then
+							write(false)
+						end
+					end
 					function profile:AddUserId(userId)
 						table.insert(calls.UserIds, userId)
 					end
 					function profile:EndSession()
-						self._active = false
-						calls.Ended += 1
-						for _, fn in endCallbacks do
-							task.spawn(fn)
+						if self._active then
+							write(true)
 						end
 					end
 					calls.Profile = profile
@@ -391,8 +427,11 @@ return function(t, Constella)
 			expect(calls.Template[Store.VERSION_KEY]).toBe(1)
 			-- Constella keeps the profile's own Data table.
 			expect(profile.Data).toBe(calls.Profile.Data)
+			profile:Set("Coins", 9)
 			store:Release(player)
+			-- Release returns only after the final write has happened.
 			expect(calls.Ended).toBe(1)
+			expect(calls.Saved.Coins).toBe(9)
 		end)
 
 		t.it("treats a missing profile as a failed load", function()

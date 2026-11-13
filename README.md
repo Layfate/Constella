@@ -37,10 +37,10 @@ Also available as a ready-to-insert model file (**[download `Constella.rbxm`](ht
 - **Safe networking by default.** Every client request passes rate limiting, payload caps, schema validation and your authorization check before your code runs. Clients only ever see generic error codes; the details stay on the server.
 - **An explicit architecture.** Apps start services in dependency order, catch duplicates, missing dependencies and cycles before any code runs, keep client and server code apart, and roll back cleanly if startup fails. No globals, no singletons, no auto-discovery.
 - **Player data that fails closed.** Migrations, template reconciliation and session-loss handling sit on top of ProfileStore's session locking. A failed load never overwrites saved data.
-- **Tested in Studio.** 208 unit tests, Data failure simulations, and Play-mode integration tests with a hostile client against real remotes.
+- **Tested and measured.** Unit tests, Data failure simulations, tests against real ProfileStore, Play-mode integration tests with a hostile client against real remotes, and published [benchmarks](docs/Benchmarks.md), including where Constella is slower.
 
 > [!IMPORTANT]
-> `Constella.Data` is **beta**. It runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately, and it hasn't been tested against real ProfileStore yet. Test it in a separate experience before real player data depends on it. See [Data](docs/Data.md).
+> `Constella.Data` is **beta**. It runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately. It's tested against real ProfileStore 1.0.3 in ProfileStore's mock mode, but not yet against live DataStores. Test it in a separate published experience before real player data depends on it. See [Data](docs/Data.md).
 
 ## Modules
 

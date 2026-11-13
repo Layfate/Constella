@@ -39,14 +39,13 @@ export type Cleanup = {
 	IsDestroyed: (self: any) -> boolean,
 }
 
-type Kind = "function" | "thread" | "method"
-
-type Entry = {
-	resource: any,
-	kind: Kind,
-	method: string?,
-	key: any,
-}
+-- Storage: two parallel arrays, so tracking a plain resource costs two
+-- array slots instead of a table per resource. The method column holds a
+-- method name (string) or one of these markers. Keyed resources (Set) are
+-- stored as a small record { resource, method, key } marked KEYED.
+local CALL = table.freeze({}) -- function: call it
+local CANCEL = table.freeze({}) -- thread: cancel it
+local KEYED = table.freeze({}) -- keyed record
 
 local function hasMethod(value: any, name: string): boolean
 	local ok, member = pcall(function()
@@ -55,7 +54,7 @@ local function hasMethod(value: any, name: string): boolean
 	return ok and type(member) == "function"
 end
 
-local function resolve(resource: any, method: string?, level: number): (Kind, string?)
+local function resolve(resource: any, method: string?, level: number): any
 	if method ~= nil then
 		if type(method) ~= "string" then
 			error(("[Constella.Cleanup] Method name must be a string, got %s"):format(typeof(method)), level)
@@ -63,25 +62,25 @@ local function resolve(resource: any, method: string?, level: number): (Kind, st
 		if not hasMethod(resource, method) then
 			error(("[Constella.Cleanup] Resource of type %s has no method '%s'"):format(typeof(resource), method), level)
 		end
-		return "method", method
+		return method
 	end
 
 	local valueType = typeof(resource)
 	if valueType == "function" then
-		return "function", nil
+		return CALL
 	elseif valueType == "thread" then
-		return "thread", nil
+		return CANCEL
 	elseif valueType == "Instance" then
-		return "method", "Destroy"
+		return "Destroy"
 	elseif valueType == "RBXScriptConnection" then
-		return "method", "Disconnect"
+		return "Disconnect"
 	elseif valueType == "table" then
 		if hasMethod(resource, "Destroy") then
-			return "method", "Destroy"
+			return "Destroy"
 		elseif hasMethod(resource, "Disconnect") then
-			return "method", "Disconnect"
+			return "Disconnect"
 		elseif hasMethod(resource, "Cancel") then
-			return "method", "Cancel"
+			return "Cancel"
 		end
 	end
 
@@ -109,14 +108,15 @@ local function cancelThread(thread: thread)
 	end
 end
 
-local function dispose(entry: Entry)
-	local resource = entry.resource
-	if entry.kind == "function" then
+local function dispose(resource: any, method: any)
+	if method == CALL then
 		resource()
-	elseif entry.kind == "thread" then
+	elseif method == CANCEL then
 		cancelThread(resource)
+	elseif method == KEYED then
+		dispose(resource.resource, resource.method)
 	else
-		resource[entry.method :: string](resource)
+		resource[method](resource)
 	end
 end
 
@@ -132,47 +132,57 @@ local Cleanup = {}
 local CleanupClass = {}
 CleanupClass.__index = CleanupClass
 
-local function findEntry(self: any, keyOrResource: any): Entry?
-	local keyed = self._keys[keyOrResource]
-	if keyed then
-		return keyed
+-- Position of a resource, looked up by key first, then by value.
+local function indexOf(self: any, keyOrResource: any): number?
+	local record = self._keys[keyOrResource]
+	if record then
+		return table.find(self._resources, record)
 	end
-	for _, entry in self._entries do
-		if rawequal(entry.resource, keyOrResource) then
-			return entry
+	local methods = self._methods
+	for index, resource in self._resources do
+		if methods[index] == KEYED then
+			if rawequal(resource.resource, keyOrResource) then
+				return index
+			end
+		elseif rawequal(resource, keyOrResource) then
+			return index
 		end
 	end
 	return nil
 end
 
-local function unlink(self: any, entry: Entry)
-	local index = table.find(self._entries, entry)
-	if index then
-		table.remove(self._entries, index)
+-- Removes the entry at `index` and returns its stored resource and method.
+local function removeAt(self: any, index: number): (any, any)
+	local resource = table.remove(self._resources, index)
+	local method = table.remove(self._methods, index)
+	if method == KEYED and self._keys[resource.key] == resource then
+		self._keys[resource.key] = nil
 	end
-	if entry.key ~= nil and self._keys[entry.key] == entry then
-		self._keys[entry.key] = nil
-	end
+	return resource, method
 end
 
 local function addEntry(self: any, resource: any, method: string?, key: any, level: number): any
 	if resource == nil then
 		error("[Constella.Cleanup] Cannot add nil", level)
 	end
-	local kind, resolvedMethod = resolve(resource, method, level + 1)
-	local entry: Entry = { resource = resource, kind = kind, method = resolvedMethod, key = key }
+	local resolved = resolve(resource, method, level + 1)
 
 	if self._destroyed then
-		local ok, err = pcall(dispose, entry)
+		local ok, err = pcall(dispose, resource, resolved)
 		if not ok then
 			error(("[Constella.Cleanup] A resource added after Destroy failed to clean up: %s"):format(tostring(err)), level)
 		end
 		return resource
 	end
 
-	table.insert(self._entries, entry)
 	if key ~= nil then
-		self._keys[key] = entry
+		local record = { resource = resource, method = resolved, key = key }
+		table.insert(self._resources, record)
+		table.insert(self._methods, KEYED)
+		self._keys[key] = record
+	else
+		table.insert(self._resources, resource)
+		table.insert(self._methods, resolved)
 	end
 	return resource
 end
@@ -189,18 +199,22 @@ function CleanupClass.Set(self: any, key: any, resource: any, method: string?): 
 	if key == nil then
 		error("[Constella.Cleanup] Key must not be nil", 2)
 	end
-	local previous: Entry? = self._keys[key]
+	local previous = self._keys[key]
 	if previous and rawequal(previous.resource, resource) then
 		return resource
 	end
 	if previous then
-		unlink(self, previous)
+		local index = table.find(self._resources, previous)
+		if index then
+			removeAt(self, index)
+		end
+		self._keys[key] = nil
 	end
 	if resource ~= nil then
 		addEntry(self, resource, method, key, 3)
 	end
 	if previous then
-		local ok, err = pcall(dispose, previous)
+		local ok, err = pcall(dispose, previous.resource, previous.method)
 		if not ok then
 			error(("[Constella.Cleanup] Previous resource under key %s failed to clean up: %s"):format(tostring(key), tostring(err)), 2)
 		end
@@ -210,19 +224,19 @@ end
 
 --- Returns the resource stored under `key`, or nil.
 function CleanupClass.Get(self: any, key: any): any
-	local entry = self._keys[key]
-	return if entry then entry.resource else nil
+	local record = self._keys[key]
+	return if record then record.resource else nil
 end
 
 --- Cleans a single resource now (looked up by key first, then by value).
 --- Returns false if it was not found.
 function CleanupClass.Remove(self: any, keyOrResource: any): boolean
-	local entry = findEntry(self, keyOrResource)
-	if not entry then
+	local index = indexOf(self, keyOrResource)
+	if not index then
 		return false
 	end
-	unlink(self, entry)
-	local ok, err = pcall(dispose, entry)
+	local resource, method = removeAt(self, index)
+	local ok, err = pcall(dispose, resource, method)
 	if not ok then
 		error(("[Constella.Cleanup] Remove failed to clean up resource: %s"):format(tostring(err)), 2)
 	end
@@ -231,12 +245,12 @@ end
 
 --- Stops tracking a resource WITHOUT cleaning it, and returns it.
 function CleanupClass.Detach(self: any, keyOrResource: any): any
-	local entry = findEntry(self, keyOrResource)
-	if not entry then
+	local index = indexOf(self, keyOrResource)
+	if not index then
 		return nil
 	end
-	unlink(self, entry)
-	return entry.resource
+	local resource, method = removeAt(self, index)
+	return if method == KEYED then resource.resource else resource
 end
 
 --- Connects to an RBXScriptSignal or Constella Signal and tracks the connection.
@@ -267,16 +281,21 @@ local function clean(self: any, level: number)
 	end
 	self._cleaning = true
 	local errors: { string }? = nil
-	local entries = self._entries
+	local resources, methods = self._resources, self._methods
 	while true do
-		local entry = table.remove(entries)
-		if entry == nil then
+		local count = #resources
+		if count == 0 then
 			break
 		end
-		if entry.key ~= nil and self._keys[entry.key] == entry then
-			self._keys[entry.key] = nil
+		-- Last in, first out. Read and clear before disposing, because a
+		-- disposer may add or remove resources on this same manager.
+		local resource, method = resources[count], methods[count]
+		resources[count] = nil
+		methods[count] = nil
+		if method == KEYED and self._keys[resource.key] == resource then
+			self._keys[resource.key] = nil
 		end
-		local ok, err = pcall(dispose, entry)
+		local ok, err = pcall(dispose, resource, method)
 		if not ok then
 			errors = errors or {}
 			table.insert(errors :: { string }, tostring(err))
@@ -303,7 +322,7 @@ function CleanupClass.Destroy(self: any)
 end
 
 function CleanupClass.Count(self: any): number
-	return #self._entries
+	return #self._resources
 end
 
 function CleanupClass.IsDestroyed(self: any): boolean
@@ -312,8 +331,9 @@ end
 
 function Cleanup.new(): Cleanup
 	local self = setmetatable({
-		_entries = {} :: { Entry },
-		_keys = {} :: { [any]: Entry },
+		_resources = {},
+		_methods = {},
+		_keys = {},
 		_destroyed = false,
 		_cleaning = false,
 	}, CleanupClass)

@@ -4,14 +4,23 @@ All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.
 
 ## Unreleased
 
-Fixes from a code review. Each one has a regression test that fails on 0.1.0.
+Fixes from two code reviews, plus verification and performance work. Each fix has a regression test.
 
 ### Fixed
 - **Replication:** a share that was stopped and recreated under the same name restarted its version at 1, so clients could discard its updates as stale. Versions now come from one counter per replicator that only ever increases.
 - **Replication:** snapshots read the live state, so a value rejected as an update (unsupported or oversized) could still be served by a later snapshot. Shares now cache the last value that passed validation, and the initial value gets the full size check at `Share` time.
 - **Network:** an error inside a Schema validator (for example a `Check.refine` predicate) wasn't caught. For a RemoteFunction, that could send the server's error text to the client. Validation and payload measurement now run in protected calls: errors go to `OnError` and the request is rejected as `InvalidArguments`. Both entry points also guard the whole check sequence.
 
+- **Data:** with ProfileStore, `profile:Save()`, `store:Release()` and `store:Shutdown()` returned before anything was written, because ProfileStore saves on a separate thread and fires `OnSessionEnd` before its final write. The adapter now waits for ProfileStore's `OnAfterSave`, capped by a new `SaveTimeout` option (30 seconds by default).
+
+### Changed
+- **Signal:** listener threads are recycled and connections live in a linked list, instead of creating a new coroutine per listener and copying the list on every `Fire`. `Fire` is 3–4× faster; ordering, snapshot and error-isolation behaviour are unchanged.
+- **Cleanup:** plain resources are stored in two parallel arrays instead of a table each, using about 4× less memory.
+
 ### Added
+- **Data:** `ProfileStoreAdapter.new(ProfileStore, { Mock = true })` uses ProfileStore's in-memory mock store, so tests never touch real data.
+- **Tests:** `tests/server/ProfileStore.spec.luau` runs Data against real ProfileStore (verified with 1.0.3) when it's installed, and is skipped otherwise. TestKit gains `t.skip`.
+- **Benchmarks:** `benchmarks/` suite and [docs/Benchmarks.md](docs/Benchmarks.md), comparing with sleitnick/signal, sleitnick/trove and plain Roblox approaches.
 - **Network:** `MaxInFlight` on client functions (default 8) bounds outstanding `InvokeServer` calls, counting timed-out ones that haven't returned. Beyond it, `Invoke` fails fast with `"TooManyRequests"`. Also adds `fn:GetInFlight()`.
 - **Core:** `WaitForStart` and `StartTimeout` let critical services act as a readiness gate. `App:Start` waits for their `Start` to finish, and any error or timeout fails startup with a rollback.
 
