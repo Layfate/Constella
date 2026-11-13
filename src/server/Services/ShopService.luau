@@ -19,7 +19,7 @@ local ShopService = {
 	Dependencies = { "RewardService" },
 }
 
-function ShopService.Init(self: any, context: any)
+function ShopService.Init(_self: any, context: any)
 	local rewards = context:Get("RewardService")
 	local logger = Constella.Debug.Logger.new("ShopService")
 

@@ -377,8 +377,8 @@ return function(t, Constella)
 					profile.OnSessionEnd = newSignal()
 					profile.OnSave = newSignal()
 					profile.OnAfterSave = newSignal()
-					function profile:IsActive()
-						return self._active
+					function profile.IsActive()
+						return profile._active
 					end
 					local function write(ending)
 						task.spawn(function()
@@ -393,16 +393,16 @@ return function(t, Constella)
 							profile.OnAfterSave:Fire(calls.Saved)
 						end)
 					end
-					function profile:Save()
-						if self._active then
+					function profile.Save()
+						if profile._active then
 							write(false)
 						end
 					end
-					function profile:AddUserId(userId)
+					function profile.AddUserId(_, userId)
 						table.insert(calls.UserIds, userId)
 					end
-					function profile:EndSession()
-						if self._active then
+					function profile.EndSession()
+						if profile._active then
 							write(true)
 						end
 					end

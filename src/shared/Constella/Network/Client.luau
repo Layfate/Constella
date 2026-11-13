@@ -79,7 +79,8 @@ local function waitFor(parent: Instance, name: string, timeout: number, what: st
 	local child = parent:WaitForChild(name, timeout)
 	if child == nil then
 		error(
-			PREFIX .. ("%s '%s' was not found in %s after %ss"):format(what, name, parent:GetFullName(), tostring(timeout)),
+			PREFIX
+				.. ("%s '%s' was not found in %s after %ss"):format(what, name, parent:GetFullName(), tostring(timeout)),
 			3
 		)
 	end
@@ -142,7 +143,7 @@ function ClientFunctionClass.Invoke(self: any, ...: any): (boolean, ...any)
 		task.spawn(thread, nil)
 	end)
 
-	local results = coroutine.yield()
+	local results: any = coroutine.yield()
 	if results == nil then
 		return false, "Timeout"
 	end

@@ -22,8 +22,13 @@ cleanup:Add(task.spawn(function()
 end))
 
 -- Keyed resources replace (and clean) whatever was there before.
-cleanup:Set("highlight", Instance.new("Highlight", part))
-cleanup:Set("highlight", Instance.new("SelectionBox", part)) -- the Highlight is destroyed
+local highlight = Instance.new("Highlight")
+highlight.Parent = part
+cleanup:Set("highlight", highlight)
+local selectionBox = Instance.new("SelectionBox")
+selectionBox.Adornee = part
+selectionBox.Parent = part
+cleanup:Set("highlight", selectionBox) -- the Highlight is destroyed
 
 cleanup:Add(function()
 	print("[Cleanup] all resources released")

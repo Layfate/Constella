@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  STYLUA_VERSION: v0.20.0
+  SELENE_VERSION: 0.27.1
+  ROJO_VERSION: v7.4.4
+  LUAU_LSP_VERSION: 1.70.1
+
+jobs:
+  checks:
+    name: Format, lint and type check
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install tools (pinned versions)
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools" "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP/tools"
+          gh release download "$STYLUA_VERSION" --repo JohnnyMorganz/StyLua --pattern 'stylua-linux-x86_64.zip'
+          gh release download "$SELENE_VERSION" --repo Kampfkarren/selene --pattern "selene-${SELENE_VERSION}-linux.zip"
+          gh release download "$ROJO_VERSION" --repo rojo-rbx/rojo --pattern "rojo-${ROJO_VERSION#v}-linux-x86_64.zip"
+          gh release download "$LUAU_LSP_VERSION" --repo JohnnyMorganz/luau-lsp --pattern 'luau-lsp-linux-x86_64.zip'
+          for archive in *.zip; do unzip -o -q "$archive" -d "$RUNNER_TEMP/bin"; done
+          chmod +x "$RUNNER_TEMP/bin"/*
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          curl -fsSL -o "$RUNNER_TEMP/globalTypes.d.luau" \
+            "https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/${LUAU_LSP_VERSION}/scripts/globalTypes.d.luau"
+
+      - name: Versions
+        run: |
+          stylua --version
+          selene --version
+          rojo --version
+          luau-lsp --version
+
+      - name: Format (StyLua)
+        if: always()
+        run: stylua --check src tests examples benchmarks
+
+      - name: Lint (selene)
+        if: always()
+        run: selene src tests examples benchmarks
+
+      - name: Type check (luau-lsp, Roblox types)
+        if: always()
+        run: |
+          rojo sourcemap dev.project.json --output sourcemap.json
+          luau-lsp analyze \
+            --platform=roblox \
+            --sourcemap=sourcemap.json \
+            --definitions=@roblox="$RUNNER_TEMP/globalTypes.d.luau" \
+            --base-luaurc=.luaurc \
+            src tests examples benchmarks
