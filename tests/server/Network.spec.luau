@@ -45,13 +45,107 @@ return function(t, Constella)
 			expect(server:GetStats().A.Rejected.Busy).toBe(1)
 			expect(server:GetStats().B.Rejected.Busy).toBe(1)
 			server:_forgetPlayer(alice) -- disconnect must not reset occupied slots
-			a:_receive(alice)
+			a:_receive(eve)
 			expect(calls).toBe(2)
+			expect(server:GetStats().A.Rejected.Busy).toBe(2)
 			gate:Fire()
 			expect(server:GetStats().A.InFlight).toBe(0)
-			a:_receive(alice)
+			a:_receive(eve)
 			expect(calls).toBe(3)
 			gate:Fire()
+			server:Destroy()
+			gate:Destroy()
+		end)
+
+		t.it("keeps slot accounting balanced under mixed hostile traffic", function()
+			local server = newServer({ MaxInFlightPerPlayer = 4, MaxInFlight = 64 })
+			local gate = Constella.Signal.new()
+			local schema =
+				{ Check.string(10), Check.integer(1, 9), Check.record({ Note = Check.optional(Check.string(5)) }) }
+			local seen = 0
+			local function checkArgs(item, count, extra)
+				-- Only fully validated arguments may ever reach a handler.
+				assert(type(item) == "string" and #item <= 10, "unvalidated item")
+				assert(type(count) == "number" and count % 1 == 0 and count >= 1 and count <= 9, "unvalidated count")
+				assert(type(extra) == "table", "unvalidated record")
+				for key in extra do
+					assert(key == "Note", "unvalidated key")
+				end
+			end
+			local event = server:Event("Mixed", { Schema = schema, RateLimit = { Count = 1e9, Per = 1 } })
+			event:Connect(function(_, item, count, extra)
+				checkArgs(item, count, extra)
+				seen += 1
+				if count == 9 then
+					gate:Wait() -- yields: the slot stays taken until it returns
+				elseif count == 8 then
+					error("handler bug")
+				end
+			end)
+			event:Connect(function() end) -- a second listener per request
+			local fn = server:Function("MixedFn", { Schema = schema, RateLimit = { Count = 1e9, Per = 1 } })
+			fn:SetHandler(function(_, item, count, extra)
+				checkArgs(item, count, extra)
+				seen += 1
+				if count == 8 then
+					error("handler bug")
+				end
+				return count
+			end)
+
+			local deep = {}
+			local cursor = deep
+			for _ = 1, 20 do
+				cursor.Note = {}
+				cursor = cursor.Note
+			end
+			local hostile = {
+				{ "Sword", 0 / 0, {} },
+				{ "Sword", math.huge, {} },
+				{ "Sword", 1.5, {} },
+				{ "Sword", 2, { Admin = true } },
+				{ "Sword", 2, { Note = "toolong" } },
+				{ string.rep("x", 5000), 2, {} },
+				{ "Sword", 2, deep },
+				{ 1, 2, {} },
+				{ "Sword", 2, {}, "extra argument" },
+				{},
+			}
+			local valid = 0
+			for round = 1, 3 do
+				for index = 1, 20 do
+					local player = fakePlayer("P" .. index)
+					for _, args in hostile do
+						event:_receive(player, table.unpack(args, 1, 4))
+						local ok, code = fn:_invoke(player, table.unpack(args, 1, 4))
+						expect(ok).toBe(false)
+						expect(code).toBe("Rejected")
+					end
+					local count = (index + round) % 9 + 1
+					event:_receive(player, "Sword", count, { Note = "hi" })
+					local ok, result = fn:_invoke(player, "Sword", count, {})
+					if count == 8 then
+						expect(ok).toBe(false)
+						expect(result).toBe("ServerError")
+					else
+						expect(ok).toBe(true)
+						expect(result).toBe(count)
+					end
+					valid += 2
+				end
+			end
+			-- Yielding handlers still hold their players' slots.
+			expect(server._inFlight > 0).toBe(true)
+			gate:Fire()
+			expect(seen).toBe(valid)
+			expect(server._inFlight).toBe(0)
+			expect(next(server._inFlightPlayers)).toBeNil()
+			local stats = server:GetStats()
+			expect(stats.Mixed.InFlight).toBe(0)
+			expect(stats.MixedFn.InFlight).toBe(0)
+			expect(stats.Mixed.Accepted).toBe(60)
+			expect(stats.MixedFn.Accepted).toBe(60)
+			expect(stats.Mixed.Rejected.Busy).toBeNil()
 			server:Destroy()
 			gate:Destroy()
 		end)
@@ -372,14 +466,48 @@ return function(t, Constella)
 			expect(stats.Accepted).toBe(3)
 			expect(stats.Rejected.RateLimited).toBe(1)
 
-			-- Leaving drops the bucket, so a rejoin starts fresh and nothing leaks.
+			-- Leaving drops the bucket. A rejoin is a new Player, which starts fresh.
 			server:_forgetPlayer(player)
-			event:_receive(player)
-			expect(server:GetStats().Jump.Accepted).toBe(4)
+			expect(event._limiter._buckets[player]).toBeNil()
+			local rejoined = fakePlayer("A")
+			event:_receive(rejoined)
+			event:_receive(rejoined)
+			expect(server:GetStats().Jump.Accepted).toBe(5)
 
 			advance(1)
-			event:_receive(player)
-			expect(server:GetStats().Jump.Accepted).toBe(5)
+			event:_receive(rejoined)
+			expect(server:GetStats().Jump.Accepted).toBe(6)
+			server:Destroy()
+		end)
+
+		t.it("drops requests that arrive after the player left, without keeping state for them", function()
+			local server = newServer()
+			local calls = 0
+			local event = server:Event("Late", { Schema = { Check.number() } })
+			event:Connect(function()
+				calls += 1
+			end)
+			local func = server:Function("LateFn", { Schema = {} })
+			func:SetHandler(function()
+				calls += 1
+				return true
+			end)
+			local player = fakePlayer()
+			event:_receive(player, 1)
+			expect(calls).toBe(1)
+
+			server:_forgetPlayer(player)
+			event:_receive(player, 2)
+			local ok, code = func:_invoke(player)
+			expect(ok).toBe(false)
+			expect(code).toBe("Unavailable")
+			expect(calls).toBe(1)
+			-- Nothing was created for the departed player: no bucket, no slot,
+			-- and the drop is not counted as a client rejection.
+			expect(event._limiter._buckets[player]).toBeNil()
+			expect(func._limiter._buckets[player]).toBeNil()
+			expect(server._inFlightPlayers[player]).toBeNil()
+			expect(server:GetStats().Late.Rejected).toEqual({})
 			server:Destroy()
 		end)
 

@@ -169,12 +169,23 @@ function ProfileClass.Set(self: any, key: string, value: any)
 	self.Changed:Fire(key, value, old)
 end
 
+--- Sets `key` to `updater(current)`. An updater may also change a table in
+--- place and return it: Changed still fires (with the same table as new and
+--- old value), so listeners never miss an edit made this way.
 function ProfileClass.Update(self: any, key: string, updater: (any) -> any)
 	checkActive(self, 3)
 	if type(updater) ~= "function" then
 		error(PREFIX .. "Update expects a function", 2)
 	end
-	ProfileClass.Set(self, key, updater(self.Data[key]))
+	local old = self.Data[key]
+	local new = updater(old)
+	-- The updater is user code and may have yielded past a session loss.
+	checkActive(self, 3)
+	if new == old and type(new) ~= "table" then
+		return
+	end
+	self.Data[key] = new
+	self.Changed:Fire(key, new, old)
 end
 
 --- Requests a save now. Returns false if the session is gone or the save failed.
@@ -340,115 +351,114 @@ function StoreClass.LoadAsync(self: any, player: Player): any
 		return dataError(kind, "loading was cancelled")
 	end
 
+	local resolve: (...any) -> (), reject: (...any) -> ()
 	local promise: any
-	promise = Promise.new(function(resolve, reject, onCancel)
+	promise = Promise.new(function(resolvePromise, rejectPromise, onCancel)
+		resolve, reject = resolvePromise, rejectPromise
 		onCancel(function()
 			operation.cancelled = true
 			if self._loading[player] == promise then
 				self._loading[player] = nil
 			end
 		end)
-		-- Defer until the public promise has been assigned to _loading.
-		task.defer(function()
-			local session: any = nil
-			local committed = false
-			local ok, profile, problem = xpcall(function(): (any, DataError?)
-				if shouldCancel() then
-					return nil, cancelledError()
-				end
-				local opened, result = Promise.retry(function()
-					if shouldCancel() then
-						return Promise.reject("Cancelled")
-					end
-					local acquired, reason = self._backend:StartSession(key, {
-						UserId = (player :: any).UserId,
-						ShouldCancel = shouldCancel,
-					})
-					return if acquired then acquired else Promise.reject(reason or "SessionUnavailable")
-				end, {
-					Attempts = self._attempts,
-					Delay = self._retryDelay,
-					Backoff = 2,
-					ShouldRetry = function(reason)
-						return reason ~= "Cancelled" and not shouldCancel()
-					end,
-				}):Await()
-				if not opened then
-					return nil,
-						if shouldCancel()
-							then cancelledError()
-							else dataError(
-								"LoadFailed",
-								("could not start a session: %s"):format(tostring(result))
-							)
-				end
-				session = result
-				if shouldCancel() then
-					return nil, cancelledError()
-				end
-				local prepared, failure = self:_prepare(session.Data)
-				-- Migrations are user code and may yield for arbitrarily long.
-				if shouldCancel() then
-					return nil, cancelledError()
-				end
-				if not session:IsActive() then
-					return nil, dataError("Released", "the session ended during loading")
-				end
-				if prepared == nil then
-					return nil, failure
-				end
-				Util.replaceContents(session.Data, prepared)
-				local loadedProfile = setmetatable({
-					Player = player,
-					Key = key,
-					Data = session.Data,
-					Changed = Signal.new(),
-					_session = session,
-					_store = self,
-					_active = true,
-					_releasing = false,
-				}, ProfileClass)
-				session:OnSessionEnd(function()
-					onSessionLost(self, player, loadedProfile)
-				end)
-				self._profiles[player] = loadedProfile
-				committed = true
-				return loadedProfile, nil
-			end, function(err)
-				return dataError("LoadFailed", debug.traceback(tostring(err), 2))
-			end)
-			if session and not committed then
-				endSession(self, session, key)
-			end
-			self._pending[operation] = nil
-			if self._loading[player] == promise then
-				self._loading[player] = nil
-			end
-			if not ok then
-				problem, profile = profile, nil
-			end
-			if profile then
-				self._stats.LoadsSucceeded += 1
-				self:_log("Profile loaded", { Key = key })
-				self.Loaded:Fire(player, profile)
-				resolve(profile)
-			else
-				local kind = if type(problem) == "table" then problem.Kind else nil
-				if
-					not operation.cancelled
-					and kind ~= "PlayerLeft"
-					and kind ~= "ShuttingDown"
-					and kind ~= "Released"
-				then
-					self._stats.LoadsFailed += 1
-					self:_report(("Could not load %s: %s"):format(key, tostring(problem)))
-					kick(self, player, self._kickMessage)
-				end
-				reject(problem)
-			end
-		end)
 	end)
 	self._loading[player] = promise
+
+	-- The worker starts once the public promise is in _loading, on a thread
+	-- of its own. It's spawned, not deferred: a thread that loads profiles
+	-- one after another (each Await resumed from the previous worker) would
+	-- otherwise nest one deferral deeper per load and hit Roblox's limit of
+	-- 80 after that many loads.
+	task.spawn(function()
+		local session: any = nil
+		local committed = false
+		local ok, profile, problem = xpcall(function(): (any, DataError?)
+			if shouldCancel() then
+				return nil, cancelledError()
+			end
+			local opened, result = Promise.retry(function()
+				if shouldCancel() then
+					return Promise.reject("Cancelled")
+				end
+				local acquired, reason = self._backend:StartSession(key, {
+					UserId = (player :: any).UserId,
+					ShouldCancel = shouldCancel,
+				})
+				return if acquired then acquired else Promise.reject(reason or "SessionUnavailable")
+			end, {
+				Attempts = self._attempts,
+				Delay = self._retryDelay,
+				Backoff = 2,
+				ShouldRetry = function(reason)
+					return reason ~= "Cancelled" and not shouldCancel()
+				end,
+			}):Await()
+			if not opened then
+				return nil,
+					if shouldCancel()
+						then cancelledError()
+						else dataError("LoadFailed", ("could not start a session: %s"):format(tostring(result)))
+			end
+			session = result
+			if shouldCancel() then
+				return nil, cancelledError()
+			end
+			local prepared, failure = self:_prepare(session.Data)
+			-- Migrations are user code and may yield for arbitrarily long.
+			if shouldCancel() then
+				return nil, cancelledError()
+			end
+			if not session:IsActive() then
+				return nil, dataError("Released", "the session ended during loading")
+			end
+			if prepared == nil then
+				return nil, failure
+			end
+			Util.replaceContents(session.Data, prepared)
+			local loadedProfile = setmetatable({
+				Player = player,
+				Key = key,
+				Data = session.Data,
+				Changed = Signal.new(),
+				_session = session,
+				_store = self,
+				_active = true,
+				_releasing = false,
+			}, ProfileClass)
+			session:OnSessionEnd(function()
+				onSessionLost(self, player, loadedProfile)
+			end)
+			self._profiles[player] = loadedProfile
+			committed = true
+			return loadedProfile, nil
+		end, function(err)
+			return dataError("LoadFailed", debug.traceback(tostring(err), 2))
+		end)
+		if session and not committed then
+			endSession(self, session, key)
+		end
+		self._pending[operation] = nil
+		if self._loading[player] == promise then
+			self._loading[player] = nil
+		end
+		if not ok then
+			problem, profile = profile, nil
+		end
+		if profile then
+			self._stats.LoadsSucceeded += 1
+			self:_log("Profile loaded", { Key = key })
+			self.Loaded:Fire(player, profile)
+			resolve(profile)
+		else
+			local kind = if type(problem) == "table" then problem.Kind else nil
+			if not operation.cancelled and kind ~= "PlayerLeft" and kind ~= "ShuttingDown" and kind ~= "Released" then
+				self._stats.LoadsFailed += 1
+				self:_report(("Could not load %s: %s"):format(key, tostring(problem)))
+				kick(self, player, self._kickMessage)
+			end
+			reject(problem)
+		end
+	end)
 	return promise
 end
 

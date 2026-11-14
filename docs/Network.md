@@ -49,7 +49,7 @@ Other rules:
 - **`Function` requires a `Schema`** (use `{}` for no arguments).
 - **The server never calls `InvokeClient`**, because a client could hang it. Use events to send data to clients.
 - **Rate limiting is on by default** (30 requests per second per player, per endpoint). Pass `RateLimit = false` only for endpoints you rate-limit some other way.
-- **Leaving and rejoining:** per-player state is dropped on `PlayerRemoving`, so a player who rejoins starts with a fresh bucket and nothing leaks.
+- **Leaving and rejoining:** per-player state is dropped on `PlayerRemoving`, so a player who rejoins starts with a fresh bucket and nothing leaks. A request that arrives after `PlayerRemoving` is dropped (a function answers `Unavailable`), so it can't create new state for a player who is gone.
 
 ### What the payload check protects (and what it doesn't)
 

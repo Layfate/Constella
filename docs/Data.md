@@ -101,9 +101,16 @@ profile:Update("Inventory", function(inventory)
 	table.insert(updated, "Sword")
 	return updated
 end)
+
+-- Also fine: Update that edits in place and returns the same table.
+-- Changed still fires, with that table as both the new and the old value.
+profile:Update("Inventory", function(inventory)
+	table.insert(inventory, "Sword")
+	return inventory
+end)
 ```
 
-The same rule applies to [State](State.md).
+Prefer the copy when a listener needs the old value, for example to diff it. The identity rule for `Set` also applies to [State](State.md), whose `Update` has no in-place exception: give it a new table.
 
 ## Versions and migrations
 

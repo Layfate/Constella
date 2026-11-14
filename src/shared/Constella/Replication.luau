@@ -277,36 +277,42 @@ end
 -- value is reported and never cached, so snapshots keep serving the last
 -- value that passed validation.
 function ServerClass._publish(self: any, share: any, value: any)
-	local reason, size = self:_validate(value)
-	if reason then
-		self:_report(("'%s' was not replicated: %s"):format(share.name, reason))
+	local sent, base = share.sent, share.version
+	-- `sent` is what clients hold, at version `base`: a private copy, because
+	-- the game may have mutated the old table in place before setting a new
+	-- one.
+	if self._delta and type(sent) == "table" and type(value) == "table" then
+		local reason, size = self:_validate(value)
+		if reason then
+			self:_report(("'%s' was not replicated: %s"):format(share.name, reason))
+			return
+		end
+		share.version = self:_nextVersion()
+		local patch, copy = diffCopy(sent, value, 1)
+		share.sent = copy
+		share.value = copy
+		-- An empty patch still moves clients to the new version (and to a
+		-- new table, like the server's state).
+		local message = patch or {}
+		local patchSize = Network.Payload.measure(self._limits, message)
+		if patchSize ~= nil and patchSize < (size :: number) then
+			self._update:FireList(self:_audience(share), share.name, message, share.version, false, base)
+			return
+		end
+		self:_broadcast(share, false)
 		return
 	end
-	local sent, base = share.sent, share.version
-	-- Snapshot ownership belongs to the replicator, even without Delta.
+	-- Full send: validate, measure and take the replicator's own copy in one
+	-- walk. Snapshot ownership belongs to the replicator, even without Delta.
+	local ok, copy = Network.Payload.copyReplicable(self._limits, value)
+	if not ok then
+		self:_report(("'%s' was not replicated: %s"):format(share.name, tostring(copy)))
+		return
+	end
 	share.version = self:_nextVersion()
+	share.value = copy
 	if self._delta then
-		-- `sent` is what clients hold, at version `base`: a private copy,
-		-- because the game may have mutated the old table in place before
-		-- setting a new one.
-		if type(sent) == "table" and type(value) == "table" then
-			local patch, copy = diffCopy(sent, value, 1)
-			share.sent = copy
-			share.value = copy
-			-- An empty patch still moves clients to the new version (and to a
-			-- new table, like the server's state).
-			local message = patch or {}
-			local patchSize = Network.Payload.measure(self._limits, message)
-			if patchSize ~= nil and patchSize < (size :: number) then
-				self._update:FireList(self:_audience(share), share.name, message, share.version, false, base)
-				return
-			end
-		else
-			share.sent = deepCopy(value)
-			share.value = share.sent
-		end
-	else
-		share.value = deepCopy(value)
+		share.sent = copy
 	end
 	self:_broadcast(share, false)
 end
@@ -328,6 +334,14 @@ function ServerClass._addShare(self: any, player: any, name: string, state: any,
 	local reason = self:_validate(initial)
 	if reason then
 		error(PREFIX .. ("'%s' cannot be replicated: %s"):format(name, reason), level)
+	end
+
+	-- A player can leave while the game is still preparing their data (for
+	-- example during a yielding profile load). Sharing with them then would
+	-- keep a private bucket that PlayerRemoving already had its chance to
+	-- clear, so return a share that is already stopped and keep nothing.
+	if player ~= nil and (self._departed[player] or (typeof(player) == "Instance" and player.Parent ~= Players)) then
+		return (setmetatable({ Name = name, name = name, _active = false, _server = self }, ShareClass) :: any) :: Share
 	end
 
 	local bucket
@@ -396,7 +410,8 @@ function ServerClass.Share(self: any, name: string, state: any): Share
 	return self:_addShare(nil, name, state, 3)
 end
 
---- Replicates `state` to `player` only. Removed when the player leaves.
+--- Replicates `state` to `player` only. Removed when the player leaves. For
+--- a player who has already left, returns a share that is already stopped.
 function ServerClass.ShareWith(self: any, player: Player, name: string, state: any): Share
 	if (player :: any) == nil then
 		error(PREFIX .. "ShareWith needs a player", 2)
@@ -421,6 +436,7 @@ end
 
 --- Internal: drops every private share of a player. Called on PlayerRemoving.
 function ServerClass._forgetPlayer(self: any, player: any)
+	self._departed[player] = true
 	local private = self._private[player]
 	if private == nil then
 		return
@@ -486,6 +502,8 @@ function Server.new(namespace: string, options: ServerOptions?): ReplicationServ
 		_net = net,
 		_public = {},
 		_private = {},
+		-- Players who left. Weak keys: a departed Player can still be collected.
+		_departed = setmetatable({}, { __mode = "k" }),
 		_nameKinds = {},
 		_nameCounts = {},
 		_limits = table.freeze({ MaxBytes = maxBytes, MaxDepth = 16, MaxNodes = 4096 }),
@@ -534,11 +552,63 @@ end
 -- this many; beyond that the client resyncs instead.
 local MAX_HELD_PATCHES = 64
 
+-- A refused snapshot fetch (the server rate-limits them, or the network
+-- failed) is retried this many times in total, doubling the wait each time
+-- from RESYNC_DELAY seconds. Without retries a client whose resync was
+-- refused would stay out of date until the next update happened to arrive.
+local RESYNC_ATTEMPTS = 5
+local RESYNC_DELAY = 1
+
 function MirrorClass._requestResync(self: any)
 	local resync = self._onResync
 	if resync then
 		resync()
 	end
+end
+
+function MirrorClass._applySnapshot(self: any, snapshot: any)
+	if self._destroyed or type(snapshot) ~= "table" then
+		return
+	end
+	for name, entry in snapshot do
+		if type(entry) == "table" then
+			self:Apply(name, entry[1], entry[2])
+		end
+	end
+end
+
+-- Fetches a fresh snapshot with `self._fetch`, one fetch at a time, and
+-- retries with backoff while the server refuses. Stops once the mirror is
+-- destroyed.
+function MirrorClass._resync(self: any)
+	if self._resyncing or self._destroyed then
+		return
+	end
+	self._resyncing = true
+	task.spawn(function()
+		local delay = self._resyncDelay or RESYNC_DELAY
+		for attempt = 1, RESYNC_ATTEMPTS do
+			local fetched, latest = self._fetch()
+			if self._destroyed then
+				break
+			end
+			if fetched then
+				-- Cleared first, so a patch that still can't be applied after
+				-- this snapshot can ask for another one.
+				self._resyncing = false
+				self:_applySnapshot(latest)
+				return
+			end
+			if attempt < RESYNC_ATTEMPTS then
+				task.wait(delay)
+				delay *= 2
+				if self._destroyed then
+					break
+				end
+			end
+		end
+		self._resyncing = false
+	end)
 end
 
 -- Applies `patch` to the entry's current value. Returns false if it can't.
@@ -591,7 +661,7 @@ end
 --- Applies an update unless a newer version was already applied. With
 --- `base`, `value` is a patch from version `base` to `version`.
 function MirrorClass.Apply(self: any, name: any, value: any, version: any, _removed: any?, base: any?)
-	if type(name) ~= "string" or type(version) ~= "number" then
+	if self._destroyed or type(name) ~= "string" or type(version) ~= "number" then
 		return
 	end
 	local entry = self:_entry(name)
@@ -634,6 +704,11 @@ function MirrorClass.Get(self: any, name: string): any
 end
 
 function MirrorClass.Destroy(self: any)
+	if self._destroyed then
+		return
+	end
+	self._destroyed = true
+	self._onResync = nil
 	for _, entry in self._entries do
 		entry.readOnly:Destroy()
 		entry.value:Destroy()
@@ -642,7 +717,7 @@ function MirrorClass.Destroy(self: any)
 end
 
 local function newMirror(): any
-	return setmetatable({ _entries = {} }, MirrorClass)
+	return setmetatable({ _entries = {}, _destroyed = false, _resyncing = false }, MirrorClass)
 end
 
 local ClientClass = {}
@@ -658,7 +733,6 @@ function ClientClass.Observe(self: any, name: string, callback: (any) -> ()): an
 end
 
 function ClientClass.Destroy(self: any)
-	self._mirror._onResync = nil
 	self._net:Destroy()
 	self._mirror:Destroy()
 end
@@ -678,39 +752,21 @@ function Client.new(namespace: string, options: ClientOptions?): ReplicationClie
 
 	local timeout = if options and options.Timeout then options.Timeout else 10
 	local fetch = net:Function("Fetch", { Timeout = timeout })
-	local function applySnapshot(snapshot: any)
-		if type(snapshot) == "table" then
-			for name, entry in snapshot do
-				if type(entry) == "table" then
-					mirror:Apply(name, entry[1], entry[2])
-				end
-			end
-		end
-	end
 
 	-- A delta patch that can't be applied triggers one snapshot fetch at a
-	-- time. (The server rate-limits fetches; if one is refused, the next
-	-- patch that can't be applied tries again.)
-	local resyncing = false
+	-- time, retried with backoff if the server refuses it.
+	mirror._fetch = function(): (boolean, any)
+		return fetch:Invoke()
+	end
 	mirror._onResync = function()
-		if resyncing then
-			return
-		end
-		resyncing = true
-		task.spawn(function()
-			local fetched, latest = fetch:Invoke()
-			resyncing = false
-			if fetched then
-				applySnapshot(latest)
-			end
-		end)
+		mirror:_resync()
 	end
 
 	local ok, snapshot = fetch:Invoke()
 	if not ok then
 		error(PREFIX .. ("Initial sync for '%s' failed: %s"):format(namespace, tostring(snapshot)), 2)
 	end
-	applySnapshot(snapshot)
+	mirror:_applySnapshot(snapshot)
 	return (self :: any) :: ReplicationClient
 end
 

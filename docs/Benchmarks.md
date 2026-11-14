@@ -1,6 +1,6 @@
 # Benchmarks
 
-Historical measurements for the commit named below, including where Constella loses. They do not measure the latest lifecycle and concurrency improvements; the version remains 0.3.0. Every pull request reruns the whole suite on a Roblox server against the code it changes, and fails if anything got measurably slower (see [How to run](#how-to-run)), so these numbers are checked continuously rather than once.
+Historical measurements for the commit named below, including where Constella loses. They predate the 0.3.1 lifecycle fixes and the 0.3.2 speedups; see the [changelog](../CHANGELOG.md) for those A/B results. Every pull request reruns the whole suite on a Roblox server against the code it changes, and fails if anything got measurably slower (see [How to run](#how-to-run)), so these numbers are checked continuously rather than once.
 
 ## Setup
 

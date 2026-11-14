@@ -338,10 +338,11 @@ function RandomLib.choose<T>(entries: { Entry<T> }, rng: any?, modifiers: Modifi
 	local lastPositive = 0
 	for index = 1, count do
 		local entry: any = entries[index]
-		if type(entry) ~= "table" or entry.Value == nil or not isWeight(entry.Weight) then
+		-- isWeight, written out (this loop runs once per entry per call).
+		local weight = if type(entry) == "table" then entry.Weight else nil
+		if type(weight) ~= "number" or not (weight >= 0 and weight < math.huge) or entry.Value == nil then
 			rejectEntry(entry, index, 3)
 		end
-		local weight = entry.Weight
 		total += weight
 		if weight > 0 then
 			lastPositive = index

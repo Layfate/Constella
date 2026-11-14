@@ -121,12 +121,30 @@ end
 
 local function write(state: any, newValue: any)
 	local oldValue = state._value
-	if state._equals(newValue, oldValue) then
+	local equals = state._equals
+	-- The default comparison is inlined: most states use it, and a Set is a
+	-- hot path (UI, replication).
+	if equals == defaultEquals then
+		if newValue == oldValue or (newValue ~= newValue and oldValue ~= oldValue) then
+			return
+		end
+	elseif equals(newValue, oldValue) then
 		return
 	end
 	state._value = newValue
-	schedule(state, oldValue)
-	if batchDepth == 0 then
+	if batchDepth > 0 then
+		schedule(state, oldValue)
+		return
+	end
+	-- Not inside a batch or a flush: this state is the only change, so it
+	-- notifies directly instead of going through the pending arrays. Writes
+	-- its subscribers make (including computed states) are batched into
+	-- rounds as usual. Signal.Fire never raises (listener errors are
+	-- isolated), so batchDepth is always restored.
+	batchDepth = 1
+	state._changed:Fire(newValue, oldValue)
+	batchDepth = 0
+	if pendingCount > 0 then
 		flush()
 	end
 end

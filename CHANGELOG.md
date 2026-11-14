@@ -2,31 +2,59 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
-## Improvements (version remains 0.3.0)
+## 0.3.2 — 2026-11-14
+
+Fixes for players who leave while a request, share or resync is in flight, `Changed` for in-place `Update` edits, and faster hot paths. No public API was removed or renamed.
+
+### Fixed
+- **Network:** a request that arrives after its player's `PlayerRemoving` is dropped (functions answer `Unavailable`). Before, it created rate-limit state keyed by the departed Player that nothing cleared, which kept the Player alive. Dropped requests aren't counted as client rejections.
+- **Replication:** `ShareWith` for a player who has already left (for example after a yielding profile load) returns a share that is already stopped and keeps nothing. Before, it kept a private bucket and a subscription to the state for the rest of the server's life.
+- **Replication:** a refused resync (the snapshot fetch is rate-limited) is retried up to 5 times with backoff (1, 2, 4, 8 seconds), one fetch at a time. Before, a client whose resync was refused stayed out of date until another update happened to arrive. A snapshot that arrives after the client is destroyed is ignored.
+- **Data:** loading profiles one after another from the same thread (`store:LoadAsync(player):Await()` in a loop) stopped at the 81st load: it raised Roblox's "Maximum re-entrancy depth (80) exceeded calling task.defer" and that load never settled. The load worker is now spawned once the promise is registered instead of deferred. Affects the 0.3.0 and 0.3.1 packages on Wally and pesde and the refreshed v0.3.0 `Constella.rbxm`.
+- **Data:** `profile:Update(key, fn)` fires `Changed` when `fn` edits a table in place and returns it, with that table as both the new and the old value. Before, nothing fired, so listeners such as UI or replication silently missed the edit. `Update` also raises if the session ended while `fn` yielded.
+
+### Performance
+Measured A/B against the previous code (local Luau runtime, 7–15 rounds, alternating order; Roblox-server numbers come from the CI benchmark on the pull request).
+- **Signal and Promise:** a listener that fires another signal, or a handler that settles another promise, reuses a parked runner thread from a small bounded stack instead of creating a coroutine each time. Nested `Fire`: 25–34% faster and about 1.2 KB less garbage per nesting level (now none). 10-step promise chain: 25–32% faster, 75% less garbage. `Fire` with several listeners checks the idle runner once per call instead of once per listener: 6–9% faster.
+- **State:** a `Set` outside a batch notifies directly instead of going through the pending queue, and the default equality check is inlined: `Set` 32% faster, computed update 10% faster.
+- **Network:** a request no longer allocates a tracking record (each handler holds its own in-flight slot), and function results pass through as varargs instead of two `table.pack`s. Requests allocate nothing; function requests 17% faster. A 50-player stress run with forged, oversized and burst traffic gave identical accept/reject counts and a lower worst tick.
+- **Replication:** a full publish validates, measures and copies the value in one walk (`Payload.copyReplicable`): 8–10% faster.
+- **Data:** profile copies clone each table in one allocation and only recurse into nested tables: load + release 14–17% faster, 2.3–2.7× faster for a 500-item profile.
+- **Cleanup:** functions and threads are added without a method lookup, and functions are called directly on clean: Add + Clean 25% faster.
+- **Random.choose:** weight validation inlined: 23–27% faster.
+
+## 0.3.1 — 2026-11-14
+
+Compared with the v0.3.0 GitHub release, 0.3.1 contains everything below. The Wally and pesde 0.3.0 packages were published after these changes were made and already contain them, as does the refreshed v0.3.0 `Constella.rbxm` on GitHub. The v0.3.0 tag and its source archives don't.
+
+### Changed
+- Removed "by Zense" from the Wally and pesde package descriptions.
+
+### Lifecycle, concurrency and Delta replication
 
 Lifecycle correctness, server concurrency protection, Delta replication and benchmark improvements on top of v0.3.0.
 
-### Fixed
+#### Fixed
 - **Data:** cancelling `LoadAsync()` clears the public load entry while an independent worker releases any session returned later. Shutdown includes pending loads and yielding migrations in its budget. Cancellation, player presence and session activity are checked again before migrated data is committed.
 - **Component:** suspended `Start()` threads are cancelled before Stop and Cleanup on manager destruction, tag removal and ancestry removal.
 - **Signal:** both Connect and Once replace an idle runner cancelled by user code.
 - **Replication:** snapshots own an independent copy of the last validated value, including nested tables. Rejected updates and later edits to game-owned tables cannot corrupt that cache.
 - **Pool:** failing prewarm Reset disposes the new object; constructor failure also disposes earlier prewarmed objects. Prewarming a destroyed pool raises.
 
-### Behavior and configuration notes
+#### Behavior and configuration notes
 - Network namespaces now default to 16 concurrent requests per player and 256 overall, across endpoints and including yielding validation, authorization and handlers. Configure `MaxInFlightPerPlayer` and `MaxInFlight` on `Network.Server.new`. Excess function requests return `RateLimited`; server counters use `Busy`.
 - Rejection logs aggregate counts per endpoint/reason over `RejectLogInterval` (default 5 seconds). `OnReject` and rejection counters still see every rejection.
 - Component teardown now cancels suspended startup work. Move work that must outlive a component into a separately owned task.
 - The Studio CI workflow runs two clients, actual Delta delivery, stale initial snapshots, private visibility and disconnect cleanup on an authenticated Windows runner. Enable repository variable `ROBLOX_STUDIO_CI=true` and runner labels `self-hosted`, `Windows`, `roblox-studio`.
 - Existing benchmark tables describe the older recorded commit; these correctness changes have not been rebenchmarked.
 
-### Added
+#### Added
 - **Replication:** `Replication.Server.new(namespace, { Delta = true })` sends a change from one table to another as a patch (only what changed, recursively) whenever that's smaller than the whole value: 90 bytes instead of 1,929 for one changed field of a 40-item inventory. The server diffs against a private copy of what clients have, so editing a table in place and then setting a copy still replicates every change. A patch that arrives early is held until the value it builds on arrives; one that can't be applied makes the client fetch a fresh snapshot. Off by default. See [Replication](docs/Replication.md#delta-updates).
 - **Network:** `Payload.measureReplicable(limits, value)`, which also rejects values that can't be replicated, in the same walk.
 - **Benchmarks:** LemonSignal, Janitor and evaera/roblox-lua-promise as competitors (pinned by commit and SHA-256); Zone, Replication (time and bytes), Data, Component and a 50-player server tick; 7 runs; a 95% bootstrap confidence interval for every A/B comparison. **CI now fails a pull request** when a case is more than 10% slower than its base commit with the interval above +5%.
 - **Tests:** lifecycle and concurrency regressions, Delta round trips over remote-safe random tables, 300 random updates kept in sync with in-place edits, held and out-of-order patches, resync, recycled threads, and Zone re-entrancy. The automated Studio integration run checks two real clients, Delta serialization, stale initial snapshots, private visibility and disconnect cleanup.
 
-### Changed
+#### Changed
 - **Promise:** executors and handlers run on recycled threads, like Signal's listeners, instead of a new coroutine each; `Then`, `Finally` and `Await` queue data instead of closures; state is stored compactly. `resolve` + `Then` + `Await` is 47% faster, and a pending promise uses 56% less memory (242 bytes; evaera's uses 2,896). Handlers still run in order, each on a thread of its own, and one that yields never delays the others.
 - **Replication:** a value is checked and measured in one walk instead of two: publishing is 33% faster.
 - **Zone:** no table copy per step, and no protected call around the built-in position getters (they can't raise): 8–13% faster. Position callback errors are reported after the step's loop.

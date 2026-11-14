@@ -1,7 +1,7 @@
 # The scope must match the pesde account the package is published from.
 name = "zense/constella"
-version = "0.3.0"
-description = "A modular Luau toolkit for Roblox by Zense: app lifecycle, signals, cleanup, reactive state, secure networking, components, pools, zones, promises, player data and replication."
+version = "0.3.2"
+description = "A modular Luau toolkit for Roblox: app lifecycle, signals, cleanup, reactive state, secure networking, components, pools, zones, promises, player data and replication."
 authors = ["Zense"]
 license = "MIT"
 repository = "https://github.com/Layfate/Constella"
