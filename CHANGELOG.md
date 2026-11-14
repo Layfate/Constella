@@ -4,8 +4,11 @@ All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.
 
 ## Unreleased
 
+### Added
+- **CI:** the whole test suite runs on a real Roblox server on every push, through Open Cloud: the CI place is built from `ci.project.json` with a pinned ProfileStore, published to a dedicated CI experience, and run with the Luau execution API. 242 tests pass there, including the live DataStore tests.
+
 ### Verified
-- **Data:** the live DataStore tests pass on real DataStores through ProfileStore 1.0.3 in a published test place (one Studio server). Live multi-server testing is still open, so Data stays beta.
+- **Data:** the live DataStore tests pass on real DataStores through ProfileStore 1.0.3, in Studio Play mode and on a Roblox server in CI. Testing with players moving between live servers is still open, so Data stays beta.
 
 ## 0.2.0 — 2026-11-14
 

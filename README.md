@@ -41,7 +41,7 @@ Also available as a ready-to-insert model file (**[download `Constella.rbxm`](ht
 - **Tested and measured.** Unit tests, Data failure simulations, tests against real ProfileStore, Play-mode integration tests with a hostile client against real remotes, and published [benchmarks](docs/Benchmarks.md) against other libraries and hand-written baselines, including where Constella is slower.
 
 > [!IMPORTANT]
-> `Constella.Data` is **beta**. It runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately. It's tested against real ProfileStore 1.0.3, in mock mode and on real DataStores in a single Studio server, but not yet across live servers. Test it in a separate published experience before real player data depends on it. See [Data](docs/Data.md).
+> `Constella.Data` is **beta**. It runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately. It's tested against real ProfileStore 1.0.3, in mock mode and on real DataStores (on a Roblox server in every CI run), but not yet with players moving between live servers. Test it in a separate published experience before real player data depends on it. See [Data](docs/Data.md).
 
 ## Modules
 
@@ -203,7 +203,7 @@ selene src tests examples benchmarks     # lint
 stylua src tests examples benchmarks     # format
 ```
 
-Press **Play** in the dev place to run the full test suite and both integration tests. On every push and pull request, GitHub Actions checks formatting (StyLua), lint (selene) and strict Roblox types (luau-lsp). The test suite itself still runs in Studio. See [CONTRIBUTING.md](CONTRIBUTING.md) for how tests are structured and what a pull request needs.
+Press **Play** in the dev place to run the full test suite and both integration tests. On every push and pull request, GitHub Actions checks formatting (StyLua), lint (selene) and strict Roblox types (luau-lsp), then runs the whole test suite on a real Roblox server through Open Cloud, including the live DataStore tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for how tests are structured and what a pull request needs.
 
 ## License
 

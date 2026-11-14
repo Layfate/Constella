@@ -30,10 +30,9 @@ This stage proved that what exists works well. No new modules were added.
 
 Still verification work. No new modules are planned.
 
-- **Data:** ✅ real DataStores pass in a single Studio server. Still to do: live servers (disconnects, shutdowns, rejoining a second server, high player counts). Data stays beta until then.
+- **Data:** ✅ real DataStores pass on a Roblox server in every CI run. Still to do: players moving between live servers (disconnects, shutdowns, rejoining a second server, high player counts). Data stays beta until then.
 - **Pool:** measure memory over long sessions.
 
 ## Toward 1.0
 
-- A headless test runner, so CI also runs the test suite (Lune or run-in-roblox).
 - API freeze, then semantic versioning for every breaking change.
