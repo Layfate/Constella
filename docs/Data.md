@@ -99,7 +99,7 @@ When the backend ends a session (for example the player joined another server, w
 | `store:Get(player)` | The loaded profile, or nil |
 | `store:Release(player)` | Ends the session (the adapter does the final save). Cancels a load that's still in progress |
 | `store:BindPlayers()` | Loads players on join and releases them on leave |
-| `store:Shutdown(budget = 20)` | Stops new loads, releases everyone, and waits at most `budget` seconds. Returns whether everything finished in time |
+| `store:Shutdown(budget = 20)` | Stops new loads, releases everyone, and waits at most `budget` seconds, including for releases that were already saving (a player who left just before the server closed). Returns whether everything finished in time |
 | `store:GetStats()` | `{ Loaded, Loading, LoadsSucceeded, LoadsFailed, SessionsLost }` |
 | `store.Loaded(player, profile)` / `store.Released(player)` | Signals |
 | `profile.Data` | The live data table |

@@ -39,4 +39,5 @@ Types: `Signal.Signal<T...>` and `Signal.Connection`.
 ## Limitations
 
 - A thread suspended in `Wait()` stays suspended if the signal is destroyed, and is eventually garbage collected.
-- Listener threads are recycled when a listener doesn't yield. See [Benchmarks](Benchmarks.md) for how Signal compares with sleitnick/signal: it's a little slower (about 7–10% on `Fire` like for like) and uses less memory per connection (160 vs 176 bytes), with per-listener error isolation and ordering guarantees.
+- Listener threads are recycled when a listener doesn't yield. As with any signal that reuses threads, the values of the most recent listener call can stay reachable until that thread runs its next listener. This is bounded to one call and isn't a leak.
+- See [Benchmarks](Benchmarks.md) for how Signal compares with sleitnick/signal: it's a little slower (about 7–10% on `Fire` like for like) and uses less memory per connection (160 vs 176 bytes), with per-listener error isolation and ordering guarantees.

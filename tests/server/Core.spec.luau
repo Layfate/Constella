@@ -287,6 +287,62 @@ return function(t, Constella)
 		end)
 	end)
 
+	t.describe("running Start threads", function()
+		local function looper(name, counter, dependencies)
+			return {
+				Name = name,
+				Dependencies = dependencies,
+				Start = function()
+					while true do
+						counter.ticks += 1
+						task.wait()
+					end
+				end,
+			}
+		end
+
+		t.it("cancels a Start that is still running when the app stops", function()
+			local counter = { ticks = 0 }
+			local stopped = false
+			local app = newApp()
+			local definition = looper("Looper", counter)
+			definition.Stop = function()
+				stopped = true
+			end
+			app:Add(definition)
+			app:Start()
+			task.wait()
+			task.wait()
+			app:Stop()
+			expect(stopped).toBe(true)
+			local atStop = counter.ticks
+			task.wait()
+			task.wait()
+			task.wait()
+			expect(counter.ticks).toBe(atStop)
+		end)
+
+		t.it("cancels running Starts when a later Start fails", function()
+			local counter = { ticks = 0 }
+			local app = newApp()
+			app:Add(looper("Looper", counter))
+			app:Add({
+				Name = "Broken",
+				Dependencies = { "Looper" },
+				Start = function()
+					error("boom")
+				end,
+			})
+			local ok = pcall(app.Start, app)
+			expect(ok).toBe(false)
+			local atFailure = counter.ticks
+			task.wait()
+			task.wait()
+			task.wait()
+			expect(counter.ticks).toBe(atFailure)
+		end)
+	end)
+
 	t.describe("WaitForStart", function()
 		t.it("waits for a yielding Start before later Starts and Running", function()
 			local log = {}

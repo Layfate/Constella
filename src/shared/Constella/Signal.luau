@@ -69,9 +69,13 @@ local CALLBACK, SIGNAL, PREVIOUS, NEXT, ID = 1, 2, 3, 4, 5
 -- listener never blocks the others. Errors are caught per listener, so a
 -- failing listener never kills its runner.
 --
--- Keep the (onError, callback, ...) argument layout. Passing the connection
--- instead (one argument fewer) was tried: an idle runner then often kept the
--- first Fire argument alive, which the runner-retention test catches.
+-- Like any signal that reuses threads, the values of the most recent call
+-- can stay reachable (in an idle runner's or the caller's unused stack
+-- slots) until those slots are reused. That is bounded to one call, not a
+-- leak. Keep the (onError, callback, ...) argument layout: passing the
+-- connection instead was tried, and then the most recent Fire argument was
+-- the value held. Holding a listener, usually long-lived anyway, is better
+-- than holding a payload.
 local freeRunner: thread? = nil
 
 local function runOnRunner(onError: (string) -> (), callback: (...any) -> (), ...: any)

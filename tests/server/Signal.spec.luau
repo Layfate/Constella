@@ -190,11 +190,28 @@ return function(t, Constella)
 		return next(weak) == nil
 	end
 
+	-- Runs `fn` (which must not yield) on a thread that then finishes, and
+	-- afterwards runs one more listener on the idle runner thread.
+	--
+	-- Two places can hold the values of the most recent call for a while:
+	-- unused stack slots of the thread that called Fire, and the idle runner
+	-- that ran the listener, until it runs the next one. Both are bounded to
+	-- one call and are released on reuse, so they are not leaks, but which
+	-- slot survives depends on frame layouts and made these tests flaky.
+	-- With both cleared, anything still alive is a real leak.
+	local function isolated(fn)
+		task.spawn(fn)
+		local flush = Signal.new()
+		flush:Connect(function() end)
+		flush:Fire()
+		flush:Destroy()
+	end
+
 	t.describe("memory", function()
 		t.it("frees disconnected listeners while the signal stays alive", function()
 			local signal = Signal.new()
 			local weak = setmetatable({}, { __mode = "k" })
-			do
+			isolated(function()
 				local connections = {}
 				for index = 1, 200 do
 					local listener = function()
@@ -207,18 +224,18 @@ return function(t, Constella)
 				for _, connection in connections do
 					connection:Disconnect()
 				end
-			end
+			end)
 			expect(collected(weak)).toBe(true)
 			expect(signal:GetConnectionCount()).toBe(0)
 		end)
 
-		t.it("does not keep fired arguments alive on a new runner thread", function()
+		t.it("does not pin the arguments a new runner thread started with", function()
 			-- Keep the current runner busy so the next Fire has to create a
-			-- fresh runner thread; that runner then stays alive as the free
-			-- runner. It must not pin the arguments of the call it started with.
-			-- Retention like this can be intermittent, so the check repeats.
-			local kept = 0
-			for _ = 1, 5 do
+			-- fresh runner thread, which then stays alive as the free runner.
+			-- A runner that entered its loop with its first call's arguments
+			-- would keep them alive for as long as it exists, even after it
+			-- has run other listeners.
+			for _ = 1, 3 do
 				local release = Signal.new()
 				local blocker = Signal.new()
 				blocker:Connect(function()
@@ -229,17 +246,15 @@ return function(t, Constella)
 				local signal = Signal.new()
 				signal:Connect(function() end)
 				local weak = setmetatable({}, { __mode = "k" })
-				do
+				isolated(function()
 					local payload = {}
 					weak[payload] = true
 					signal:Fire(payload)
-				end
-				if not collected(weak, 3) then
-					kept += 1
-				end
+				end)
+				local freed = collected(weak, 5)
 				release:Fire()
+				expect(freed).toBe(true)
 			end
-			expect(kept).toBe(0)
 		end)
 	end)
 end

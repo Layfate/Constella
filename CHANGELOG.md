@@ -9,8 +9,11 @@ Verification and performance release: fixes from two code reviews (each with a r
 ### Upgrading from 0.1.0
 - **Data:** with ProfileStore, `profile:Save()`, `store:Release()` and `store:Shutdown()` now yield until ProfileStore has finished writing, for up to `SaveTimeout` (30 seconds by default). Code that called them expecting an immediate return now waits for the real save.
 - **Network:** a client function allows at most 8 outstanding `Invoke` calls by default. Further calls fail fast with `"TooManyRequests"` instead of piling up threads. Raise `MaxInFlight` if you need more.
+- **Core:** a `Start` that is still running when its definition stops (for example a `while true do ... task.wait() end` loop) is now cancelled just before that definition's `Stop`, on `app:Stop()` and on a failed startup. Move work that must outlive `Stop` out of `Start`.
 
 ### Fixed
+- **Data:** `store:Shutdown()` only waited for the sessions it released itself. A release that was already saving (a player who left just before the server closed) wasn't counted, so `Shutdown` could return `true` before that final save finished. It now waits for every session that is still ending.
+- **Core:** a `Start` that yielded and never returned kept running after `app:Stop()` and after a failed startup had rolled back. It's now cancelled before its definition's `Stop`.
 - **Replication:** a share that was stopped and recreated under the same name restarted its version at 1, so clients could discard its updates as stale. Versions now come from one counter per replicator that only ever increases.
 - **Replication:** snapshots read the live state, so a value rejected as an update (unsupported or oversized) could still be served by a later snapshot. Shares now cache the last value that passed validation, and the initial value gets the full size check at `Share` time.
 - **Network:** an error inside a Schema validator (for example a `Check.refine` predicate) wasn't caught. For a RemoteFunction, that could send the server's error text to the client. Validation and payload measurement now run in protected calls: errors go to `OnError` and the request is rejected as `InvalidArguments`. Both entry points also guard the whole check sequence.
@@ -20,7 +23,7 @@ Verification and performance release: fixes from two code reviews (each with a r
 - **Signal:** listener threads are recycled and connections live in a linked list, instead of creating a new coroutine per listener and copying the list on every `Fire`. `Fire` is 3–4× faster; ordering, snapshot and error-isolation behaviour are unchanged.
 - **Cleanup:** plain resources are stored in two parallel arrays instead of a table each, using about 4× less memory.
 - **Signal:** `Fire` dispatches listeners inline instead of through a helper call, so it is about 3–5% faster. Memory per connection (160 bytes), ordering, snapshot and error-isolation behaviour are unchanged.
-- **Tests:** the Signal runner-retention test repeats its scenario 5 times, so intermittent retention fails it reliably.
+- **Tests:** the Signal memory tests no longer depend on which tests ran before them, and still fail against deliberately leaking Signals.
 
 ### Added
 - **Data:** `ProfileStoreAdapter.new(ProfileStore, { Mock = true })` uses ProfileStore's in-memory mock store, so tests never touch real data.

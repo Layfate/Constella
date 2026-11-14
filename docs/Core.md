@@ -44,6 +44,8 @@ return InventoryService
 5. **Failed startup**: `Stop` runs in reverse order for every definition whose `Init` was called, and each one's `context.Cleanup` is destroyed. Then `Start` raises. The app's state becomes `"Failed"` and it can't be restarted. Write `Stop` so it copes with `Start` never having run.
 6. **`Stop`** runs `Stop` in reverse dependency order, then destroys each Cleanup. Errors are collected and raised together after everything has stopped. Calling it again does nothing.
 
+A `Start` that is still running when its definition stops (it yielded and never returned, such as a `while true do ... task.wait() end` loop) is cancelled just before that definition's `Stop`. This happens on `app:Stop()` and on a failed startup. Threads that `Start` spawns itself aren't tracked, so add them to `context.Cleanup`, which cancels threads when it's destroyed.
+
 The order is deterministic. Definitions are visited in registration order and dependencies in the order they're declared.
 
 ## Readiness (`WaitForStart`)
