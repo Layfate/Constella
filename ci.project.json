@@ -1,0 +1,19 @@
+{
+	"name": "Constella CI",
+	"tree": {
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"Packages": {
+				"$className": "Folder",
+				"Constella": {
+					"$path": "src/shared/Constella"
+				}
+			}
+		},
+		"ServerStorage": {
+			"ConstellaTests": {
+				"$path": "tests/server"
+			}
+		}
+	}
+}

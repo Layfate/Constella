@@ -61,3 +61,64 @@ jobs:
             --definitions=@roblox="$RUNNER_TEMP/globalTypes.d.luau" \
             --base-luaurc=.luaurc \
             src tests examples benchmarks
+
+  roblox-tests:
+    name: Test suite on a Roblox server
+    needs: checks
+    runs-on: ubuntu-latest
+    # One run at a time: every run publishes to the same CI place.
+    concurrency:
+      group: roblox-ci-place
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+      ROBLOX_UNIVERSE_ID: ${{ vars.ROBLOX_UNIVERSE_ID }}
+      ROBLOX_PLACE_ID: ${{ vars.ROBLOX_PLACE_ID }}
+      # ProfileStore 1.0.3, pinned by commit and hash. Third-party, so it's
+      # downloaded for the test place and never committed.
+      PROFILESTORE_COMMIT: 9580f7c59cd3c04808e43c92e24b9afaefba679b
+      PROFILESTORE_SHA256: ad43737203688b8e88cab34ebe8c483000c157e53bfb41e35f1b49ee89d0c95f
+    steps:
+      - name: Check for the Open Cloud key
+        id: key
+        run: |
+          # Pull requests from forks and Dependabot don't get repository secrets.
+          if [ -z "$ROBLOX_API_KEY" ]; then
+            echo "::notice::ROBLOX_API_KEY isn't available to this run; skipping the Roblox test suite."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.key.outputs.available == 'true'
+
+      - name: Install Rojo (pinned)
+        if: steps.key.outputs.available == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          gh release download "$ROJO_VERSION" --repo rojo-rbx/rojo --pattern "rojo-${ROJO_VERSION#v}-linux-x86_64.zip"
+          unzip -o -q "rojo-${ROJO_VERSION#v}-linux-x86_64.zip" -d "$RUNNER_TEMP/bin"
+          chmod +x "$RUNNER_TEMP/bin/rojo"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Build the CI place (package, tests and pinned ProfileStore)
+        if: steps.key.outputs.available == 'true'
+        run: |
+          mkdir -p build
+          gh api "repos/MadStudioRoblox/ProfileStore/contents/ProfileStore.luau?ref=$PROFILESTORE_COMMIT" \
+            -H "Accept: application/vnd.github.raw" > build/ProfileStore.luau
+          echo "$PROFILESTORE_SHA256  build/ProfileStore.luau" | sha256sum --check
+          python3 - <<'EOF'
+          import json
+          project = json.load(open("ci.project.json", encoding="utf-8"))
+          project["tree"]["ServerStorage"]["ProfileStore"] = {"$path": "build/ProfileStore.luau"}
+          json.dump(project, open("ci.generated.project.json", "w", encoding="utf-8"), indent="\t")
+          EOF
+          rojo build ci.generated.project.json -o build/ci.rbxl
+
+      - name: Run the test suite on Roblox (Open Cloud)
+        if: steps.key.outputs.available == 'true'
+        run: python3 .github/scripts/roblox_tests.py build/ci.rbxl

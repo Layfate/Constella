@@ -91,6 +91,15 @@ luau-lsp analyze --platform=roblox --sourcemap=sourcemap.json \
 
 More detail is in [docs/Architecture.md](docs/Architecture.md).
 
+## Tests in CI
+
+The `roblox-tests` job builds `ci.project.json` (the package, the tests in `ServerStorage` and a pinned ProfileStore), publishes it to a dedicated CI experience, and runs the suite there with Open Cloud's Luau execution API ([`.github/scripts/roblox_tests.py`](.github/scripts/roblox_tests.py)). It needs:
+
+- the repository secret `ROBLOX_API_KEY`: a user API key with `universe-places:write` and `universe.place.luau-execution-session:read`/`write`, limited to the CI experience;
+- the repository variables `ROBLOX_UNIVERSE_ID` and `ROBLOX_PLACE_ID` of that experience.
+
+Keep the CI place closed in Studio: while it's open, publishing to it fails with HTTP 409.
+
 ## Releasing
 
 1. Set the new version in `src/shared/Constella/init.luau`, `wally.toml`, `pesde.toml`, the README badge and install lines, `docs/README.md` and `tests/server/Root.spec.luau`.
@@ -101,6 +110,6 @@ More detail is in [docs/Architecture.md](docs/Architecture.md).
 ## Pull requests
 
 - Add or update tests for any behaviour you change, and make sure the whole suite passes in Studio.
-- CI (format, lint and type check) must pass.
+- CI must pass: format, lint, type check, and the test suite on a Roblox server. Pull requests from forks don't get the Open Cloud key, so that last job is skipped for them and a maintainer runs it.
 - Update the module's page in `docs/` and add an entry to `CHANGELOG.md`.
 - Don't make performance claims without a benchmark to back them up.
