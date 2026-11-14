@@ -49,6 +49,21 @@ return function(t, Constella)
 	end
 
 	t.describe("loading", function()
+		-- Regression: the load worker was deferred, and each Await resumed
+		-- this thread from the previous worker, so every load nested one
+		-- deferral deeper until Roblox's re-entrancy limit (80) raised.
+		t.it("loads many profiles one after another from the same thread", function()
+			local store = newStore()
+			for _ = 1, 120 do
+				local player = fakePlayer()
+				local ok, profile = load(store, player)
+				expect(ok).toBe(true)
+				expect(profile.Data.Coins).toBe(0)
+				store:Release(player)
+			end
+			expect(store:Shutdown(1)).toBe(true)
+		end)
+
 		t.it("creates new profiles from the template and fires Loaded", function()
 			local store = newStore()
 			local player = fakePlayer()
