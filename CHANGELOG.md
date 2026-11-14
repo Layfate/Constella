@@ -14,7 +14,7 @@ Typed public API, Data out of beta, fixes for cancelled waiting threads and for 
 - **Packaging:** the Wally package would have contained the whole repository, including build output and a downloaded copy of ProfileStore, because Wally 0.3.2 ignores `include`. `wally.toml` now excludes everything but the library, and pesde no longer ships a hand-written `default.project.json` (pesde generates it on install).
 
 ### Changed
-- **Performance:** fewer allocations on hot paths, with identical results. See [Benchmarks](docs/Benchmarks.md) for measurements.
+- **Performance:** fewer allocations on hot paths, with identical results. Measured A/B on a Roblox server ([Benchmarks](docs/Benchmarks.md)): `Random.choose` 4.3× faster, `State` `Set` about 20% faster, each Network request about 15% faster, and a resolved promise 32% smaller. Everything else is unchanged within noise.
   - `Random.choose` and `Random.chooseIndex` no longer build an error label for every entry on every call, and allocate nothing without modifiers. They pick exactly the entry `lootTable:Roll` picks for the same roll (a new test checks 3,000 rolls).
   - `Promise` creates its internal lists only when needed, instead of three tables per promise.
   - `State` `Set` allocates nothing (internal buffers are reused). Computed states with 1–3 sources no longer build an array on every recompute.
