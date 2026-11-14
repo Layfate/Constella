@@ -1,124 +1,148 @@
 # Benchmarks
 
-Measured results, including where Constella loses. Every pull request reruns them on a Roblox server (see [How to run](#how-to-run)), so the numbers below can be checked against a fresh run at any time.
+Measured results, including where Constella loses. Every pull request reruns the whole suite on a Roblox server against the code it changes, and fails if anything got measurably slower (see [How to run](#how-to-run)), so these numbers are checked continuously rather than once.
 
 ## Setup
 
 | | |
 | --- | --- |
 | Date | 2026-11-14 |
-| Where | **A live Roblox game server**, through Open Cloud Luau execution, in the CI experience used for the test suite. Nothing else ran on it. Earlier runs (see [History](#history)) were in Studio Edit mode, which is slower in absolute terms, so compare rows within this run only. |
+| Where | **A live Roblox game server**, through Open Cloud Luau execution, in the CI experience used for the test suite. Nothing else ran on it. |
 | Engine | Roblox 0.747.0.7471481 |
-| Code | **This build:** Constella 0.3.0 (pull request #3). **Baseline:** `main` just before it (commit `4f55b06`: 0.2.0 plus the typing work listed in the changelog, which doesn't change any code path measured here). Both were loaded into the same server and measured in the same session. |
-| Tests | 253 of 253 pass on a Roblox server for this build, including the live DataStore and cross-server tests. |
-| Speed method | The whole suite ran **5 times**. In each run, every case runs once to warm up, then 5 timed trials with a yield between them; the run's result is the median of those trials. The two builds of each case run back to back, and every other run swaps which goes first. The table shows the **median across the 5 runs**, plus the best and worst run. |
-| Memory method | Heap growth (`gcinfo`) while building objects, repeated many times. Garbage collection during a build can only make a sample *smaller*, so the 80th percentile is reported. Signal and Cleanup: 21 builds of 5,000 objects. Promises allocate more per object, so they use 61 builds of 500 (larger builds overlapped collection steps and gave samples that were far too small). |
-| Leak method | Objects go into a weak-keyed table and are released while their owner stays alive. The check then waits up to 15 seconds (creating throwaway garbage to keep the collector running) until the garbage collector has freed them. |
-| Compared with | [sleitnick/signal](https://github.com/Sleitnick/RbxUtil/tree/main/modules/signal) 2.0.3 (GoodSignal-style) and [sleitnick/trove](https://github.com/Sleitnick/RbxUtil/tree/main/modules/trove) 1.8.0, both from RbxUtil commit `31f9120fca02` (pinned by hash in CI), plus hand-written baselines for Random |
+| Code | **This build:** pull request #4 at commit `f0ac681`. **Baseline:** `main` at `2be9052`, the v0.3.0 release. Both were loaded into the same server and measured in the same session. |
+| Tests | 268 of 268 pass on a Roblox server for this build, including the live DataStore and cross-server tests. |
+| Speed method | The whole suite ran **7 times**. In each run, every case runs once to warm up, then 5 timed trials with a yield between them; the run's result is the median of those trials. The two builds of each case run back to back, and every other run swaps which goes first. Tables show the **median across the 7 runs**, plus the best and worst run. |
+| Comparison method | For each case, the ratio of the two builds' medians, with a **95% bootstrap confidence interval** (both builds' 7 results resampled 2,000 times). A change is called faster or slower only if the interval excludes ±3%. CI fails a pull request when a case is more than 10% slower with the interval above +5%. |
+| Memory method | Heap growth (`collectgarbage("count")`, which has sub-KB precision) while building objects, repeated many times; the 80th percentile is reported, because garbage collection during a build can only make a sample smaller. Signal and Cleanup: 21 builds of 5,000 objects; promises: 61 builds of 500. |
+| Leak method | Objects go into a weak-keyed table and are released while their owner stays alive; the check waits up to 15 seconds for the garbage collector to free them. |
+| Compared with | Pinned by commit and SHA-256 in CI: [sleitnick/signal](https://github.com/Sleitnick/RbxUtil/tree/main/modules/signal) 2.0.3 and [sleitnick/trove](https://github.com/Sleitnick/RbxUtil/tree/main/modules/trove) 1.8.0 (RbxUtil `31f9120`), [LemonSignal](https://github.com/Data-Oriented-House/LemonSignal) 2.0.0, [Janitor](https://github.com/howmanysmall/Janitor) 1.17.0 and [evaera/roblox-lua-promise](https://github.com/evaera/roblox-lua-promise) 4.0.0, plus hand-written baselines for Random and Pool. |
+
+**Absolute times depend on the server.** This run's server was about twice as slow as the one used for the v0.3.0 numbers (Signal `Fire` with one listener: 0.63 µs here, 0.25 µs there). Ratios between implementations in the same run are what carry over; compare rows within one run only.
 
 ### Comparing like with like
 
-Constella.Signal catches every listener's errors (`xpcall`, reported through `OnError`), so one failing listener can't break the others. sleitnick/signal doesn't catch them. To compare the same guarantee, the suite also runs sleitnick/signal with each listener wrapped in `xpcall`. That's the fair comparison.
+Constella.Signal catches every listener's errors (`xpcall`, reported through `OnError`), so one failing listener can't break the others. sleitnick/signal and LemonSignal don't. To compare the same guarantee, the suite also runs both with each listener wrapped in `xpcall`; those are the fair rows.
 
-For Random, `Random.choose` checks every entry on every call, so comparing it with a precomputed table mostly measures that validation. The two hand-written baselines skip validation entirely, so they compare the selection algorithm itself.
+`Random.choose` validates every entry on every call, and the hand-written Random baselines skip validation entirely, so they compare the selection algorithm itself.
 
-## Speed
+## This build against v0.3.0
 
-Median µs per operation across 5 runs, with the best and worst run. "Change" compares this build with the baseline; differences under about 10% that fall inside both builds' run ranges are noise.
+Median µs per operation. Only the rows with a clear change are listed here; the full table follows.
 
-| Group | Case | Implementation | Median | Best run | Worst run | Change |
-| --- | --- | --- | ---: | ---: | ---: | ---: |
-| Signal | Connect + Disconnect | Constella.Signal | 0.180 | 0.163 | 0.198 | +6% (noise) |
-| Signal | Connect + Disconnect | Constella.Signal, baseline | 0.170 | 0.156 | 0.188 | |
-| Signal | Connect + Disconnect | sleitnick/signal + xpcall (same guarantee) | 0.124 | 0.118 | 0.131 | |
-| Signal | Connect + Disconnect | sleitnick/signal (no error isolation) | 0.118 | 0.115 | 0.137 | |
-| Signal | Fire, 1 listener | Constella.Signal | 0.246 | 0.244 | 0.250 | −4% (noise) |
-| Signal | Fire, 1 listener | Constella.Signal, baseline | 0.255 | 0.251 | 0.267 | |
-| Signal | Fire, 1 listener | sleitnick/signal + xpcall (same guarantee) | 0.246 | 0.237 | 0.252 | |
-| Signal | Fire, 1 listener | sleitnick/signal (no error isolation) | 0.208 | 0.205 | 0.219 | |
-| Signal | Fire, 10 listeners | Constella.Signal | 2.203 | 2.189 | 2.528 | same |
-| Signal | Fire, 10 listeners | Constella.Signal, baseline | 2.209 | 2.205 | 2.410 | |
-| Signal | Fire, 10 listeners | sleitnick/signal + xpcall (same guarantee) | 2.210 | 2.186 | 2.219 | |
-| Signal | Fire, 10 listeners | sleitnick/signal (no error isolation) | 1.922 | 1.910 | 2.080 | |
-| Signal | Fire, 100 listeners | Constella.Signal | 21.763 | 21.191 | 22.867 | same |
-| Signal | Fire, 100 listeners | Constella.Signal, baseline | 21.880 | 21.547 | 22.459 | |
-| Signal | Fire, 100 listeners | sleitnick/signal + xpcall (same guarantee) | 21.803 | 21.628 | 21.988 | |
-| Signal | Fire, 100 listeners | sleitnick/signal (no error isolation) | 18.921 | 18.528 | 19.066 | |
-| Signal | Fire, 1,000 listeners | Constella.Signal | 220.695 | 217.997 | 222.603 | same |
-| Signal | Fire, 1,000 listeners | Constella.Signal, baseline | 218.362 | 216.043 | 226.684 | |
-| Signal | Fire, 1,000 listeners | sleitnick/signal + xpcall (same guarantee) | 219.014 | 217.689 | 227.288 | |
-| Signal | Fire, 1,000 listeners | sleitnick/signal (no error isolation) | 190.499 | 186.354 | 195.855 | |
-| Cleanup | Add + Clean 100 functions | Constella.Cleanup | 14.375 | 13.925 | 14.485 | same |
-| Cleanup | Add + Clean 100 functions | Constella.Cleanup, baseline | 14.197 | 14.046 | 14.422 | |
-| Cleanup | Add + Clean 100 functions | sleitnick/trove | 86.630 | 83.638 | 90.737 | |
-| Cleanup | Connect + Clean 100 RBXScriptConnections | Constella.Cleanup | 94.260 | 91.086 | 103.120 | same |
-| Cleanup | Connect + Clean 100 RBXScriptConnections | Constella.Cleanup, baseline | 94.841 | 89.946 | 95.591 | |
-| Cleanup | Connect + Clean 100 RBXScriptConnections | sleitnick/trove | 94.230 | 92.236 | 109.894 | |
-| Pool | Spawn + despawn a Part | Constella.Pool | 4.568 | 4.279 | 4.614 | same |
-| Pool | Spawn + despawn a Part | Constella.Pool, baseline | 4.639 | 4.541 | 6.194 | |
-| Pool | Spawn + despawn a Part | Clone + Destroy (no pool) | 9.087 | 8.885 | 9.365 | |
-| Network | Accept a valid request (all checks) | Constella.Network | **1.029** | 0.999 | 1.060 | **−15%** |
-| Network | Accept a valid request (all checks) | Constella.Network, baseline | 1.207 | 1.155 | 1.223 | |
-| Network | Reject a forged request | Constella.Network | **0.839** | 0.829 | 0.901 | **−13%** |
-| Network | Reject a forged request | Constella.Network, baseline | 0.968 | 0.950 | 1.006 | |
-| Random | Weighted roll, 100 entries | `Random.choose` (validates every call) | **3.560** | 3.532 | 3.592 | **4.3× faster** |
-| Random | Weighted roll, 100 entries | `Random.choose`, baseline | 15.179 | 14.806 | 15.393 | |
-| Random | Weighted roll, 100 entries | `lootTable:Roll` (precomputed, binary search) | 0.249 | 0.245 | 0.254 | same |
-| Random | Weighted roll, 100 entries | `lootTable:Roll`, baseline | 0.250 | 0.247 | 0.255 | |
-| Random | Weighted roll, 100 entries | Hand-written: sum, then linear scan (each call) | 1.143 | 1.059 | 1.594 | |
-| Random | Weighted roll, 100 entries | Hand-written: precomputed totals, linear scan | 0.385 | 0.380 | 0.395 | |
-| State | Set with 1 subscriber | Constella.State | **0.479** | 0.459 | 0.483 | **−20%** |
-| State | Set with 1 subscriber | Constella.State, baseline | 0.600 | 0.579 | 0.605 | |
-| State | Set a source of a computed with 1 subscriber | Constella.State | **1.023** | 0.999 | 1.041 | **−19%** |
-| State | Set a source of a computed with 1 subscriber | Constella.State, baseline | 1.265 | 1.245 | 1.296 | |
-| Promise | `resolve` + `Then` + `Await` | Constella.Promise | 1.690 | 1.586 | 2.161 | −11% (noisy) |
-| Promise | `resolve` + `Then` + `Await` | Constella.Promise, baseline | 1.894 | 1.740 | 2.452 | |
-| Promise | Chain 10 `Then`s, then resolve | Constella.Promise | 19.656 | 19.098 | 23.972 | same |
-| Promise | Chain 10 `Then`s, then resolve | Constella.Promise, baseline | 19.657 | 18.426 | 21.591 | |
+| Case | This build | v0.3.0 | Change (95% CI) |
+| --- | ---: | ---: | --- |
+| Promise: `resolve` + `Then` + `Await` | **3.113** | 5.923 | **−47%** [−63, −31] |
+| Promise: chain 10 `Then`s, then resolve | 50.724 | 66.047 | −23% [−32, +2] (likely, not certain) |
+| Replication: publish one change to a 40-item inventory (full value) | **25.596** | 38.098 | **−33%** [−36, −28] |
+| Zone: step, 100 tracked Parts (built-in getters) | **36.418** | 41.733 | **−13%** [−20, −6] |
+| Zone: step, 100 tracked points (custom getters) | **28.362** | 30.983 | **−8%** [−16, −5] |
+| Scenario: one server tick with 50 players | **357.603** | 401.799 | **−11%** [−17, −4] |
+| Network: accept a valid request | 2.514 | 2.668 | −6% [−9, 0] |
+| Data: load + release a profile | 56.676 | 61.861 | −8% [−26, −1] |
 
-The three earlier CI runs of this pull request (before the run-order swap was added) agreed on every row marked as a change: Network −12 to −16%, `Random.choose` 4.3×, State −16 to −20%.
+Everything else (Signal, Cleanup, Pool, Random, State, Component) is unchanged within noise, and the regression check found **no case slower**.
+
+| Memory per object | This build | v0.3.0 |
+| --- | ---: | ---: |
+| Resolved promise | **322 bytes** | 416 bytes |
+| Pending promise from `Then` | **242 bytes** | 549 bytes |
+
+| Bytes sent per update (one field of a 40-item inventory changes) | Bytes |
+| --- | ---: |
+| Full value (both builds) | 1,929 |
+| **`Delta = true`** (new) | **90** |
+
+## Full results
+
+Median µs per operation, with the best and worst of the 7 runs.
+
+| Group | Case | Implementation | Median | Best run | Worst run |
+| --- | --- | --- | ---: | ---: | ---: |
+| Signal | Connect + Disconnect | **Constella.Signal** | 0.642 | 0.460 | 0.761 |
+| Signal | Connect + Disconnect | sleitnick/signal + xpcall (same guarantee) | 0.511 | 0.358 | 0.612 |
+| Signal | Connect + Disconnect | LemonSignal + xpcall (same guarantee) | 0.665 | 0.368 | 1.043 |
+| Signal | Connect + Disconnect | sleitnick/signal (no error isolation) | 0.570 | 0.368 | 0.706 |
+| Signal | Connect + Disconnect | LemonSignal (no error isolation) | 0.560 | 0.364 | 0.973 |
+| Signal | Fire, 1 listener | **Constella.Signal** | 0.633 | 0.544 | 0.692 |
+| Signal | Fire, 1 listener | sleitnick/signal + xpcall | 0.568 | 0.493 | 0.649 |
+| Signal | Fire, 1 listener | LemonSignal + xpcall | 0.682 | 0.622 | 0.722 |
+| Signal | Fire, 1 listener | sleitnick/signal (no error isolation) | 0.506 | 0.428 | 0.573 |
+| Signal | Fire, 1 listener | LemonSignal (no error isolation) | 0.570 | 0.507 | 0.605 |
+| Signal | Fire, 10 listeners | **Constella.Signal** | 5.688 | 5.373 | 6.776 |
+| Signal | Fire, 10 listeners | sleitnick/signal + xpcall | 5.240 | 4.676 | 5.580 |
+| Signal | Fire, 10 listeners | LemonSignal + xpcall | 5.797 | 5.368 | 6.280 |
+| Signal | Fire, 100 listeners | **Constella.Signal** | 53.432 | 49.434 | 56.077 |
+| Signal | Fire, 100 listeners | sleitnick/signal + xpcall | 51.635 | 47.322 | 54.414 |
+| Signal | Fire, 100 listeners | LemonSignal + xpcall | 56.949 | 52.479 | 76.988 |
+| Signal | Fire, 1,000 listeners | **Constella.Signal** | 542.665 | 491.791 | 594.948 |
+| Signal | Fire, 1,000 listeners | sleitnick/signal + xpcall | 513.111 | 494.876 | 586.066 |
+| Signal | Fire, 1,000 listeners | LemonSignal + xpcall | 585.526 | 538.910 | 665.425 |
+| Cleanup | Add + Clean 100 functions | **Constella.Cleanup** | 36.804 | 35.454 | 50.520 |
+| Cleanup | Add + Clean 100 functions | Janitor | 38.802 | 34.230 | 46.861 |
+| Cleanup | Add + Clean 100 functions | sleitnick/trove | 242.550 | 152.697 | 277.910 |
+| Cleanup | Connect + Clean 100 RBXScriptConnections | **Constella.Cleanup** | 200.895 | 173.889 | 237.520 |
+| Cleanup | Connect + Clean 100 RBXScriptConnections | sleitnick/trove | 216.777 | 181.727 | 270.898 |
+| Cleanup | Connect + Clean 100 RBXScriptConnections | Janitor | 239.699 | 193.534 | 299.168 |
+| Pool | Spawn + despawn a Part | **Constella.Pool** | 9.791 | 8.115 | 11.212 |
+| Pool | Spawn + despawn a Part | Clone + Destroy (no pool) | 27.544 | 25.600 | 31.100 |
+| Network | Accept a valid request (all checks) | **Constella.Network** | 2.514 | 2.412 | 2.595 |
+| Network | Reject a forged request | **Constella.Network** | 2.048 | 1.932 | 2.277 |
+| Random | Weighted roll, 100 entries | **`lootTable:Roll`** (precomputed) | 0.427 | 0.407 | 0.460 |
+| Random | Weighted roll, 100 entries | Hand-written: precomputed totals, linear scan | 0.843 | 0.826 | 0.876 |
+| Random | Weighted roll, 100 entries | Hand-written: sum, then linear scan (each call) | 2.495 | 1.991 | 2.777 |
+| Random | Weighted roll, 100 entries | **`Random.choose`** (validates every call) | 8.000 | 7.652 | 8.350 |
+| State | Set with 1 subscriber | **Constella.State** | 1.140 | 1.104 | 1.333 |
+| State | Set a source of a computed with 1 subscriber | **Constella.State** | 2.374 | 2.231 | 2.618 |
+| Promise | `resolve` + `Then` + `Await` | **Constella.Promise** | 3.113 | 2.559 | 4.718 |
+| Promise | `resolve` + `Then` + `Await` | evaera/roblox-lua-promise | 20.420 | 17.868 | 21.600 |
+| Promise | Chain 10 `Then`s, then resolve | **Constella.Promise** | 50.724 | 46.315 | 57.537 |
+| Promise | Chain 10 `Then`s, then resolve | evaera/roblox-lua-promise | 146.370 | 114.152 | 163.743 |
+| Zone | Step, 100 tracked points (custom getters) | **Constella.Zone** | 28.362 | 28.241 | 31.451 |
+| Zone | Step, 100 tracked Parts (built-in getters) | **Constella.Zone** | 36.418 | 32.845 | 38.672 |
+| Replication | Publish one change to a 40-item inventory | **Constella.Replication**, full value | 25.596 | 24.850 | 31.983 |
+| Replication | Publish one change to a 40-item inventory | **Constella.Replication**, `Delta = true` | 39.523 | 35.216 | 43.238 |
+| Data | Load + release a profile (MemoryAdapter) | **Constella.Data** | 56.676 | 43.472 | 61.785 |
+| Component | Run + Destroy with 200 tagged parts | **Constella.Component** | 2068.070 | 1813.504 | 2360.904 |
+| Scenario | Server tick, 50 players | **Constella** | 357.603 | 333.664 | 368.405 |
+
+The scenario is one server tick for 50 players: each player's coins change and each sends a validated request, a zone checks all 50, a replicated 50-entry leaderboard (Delta) changes, a signal fires to 50 listeners and 10 promises resolve. On this slow server that's 0.36 ms, about 2% of a 60 FPS frame.
 
 ## Memory
 
-| Per object | Constella | Baseline | Compared with |
-| --- | ---: | ---: | ---: |
-| Connected Signal listener | **160 bytes** | 160 bytes | 176 bytes (sleitnick/signal) |
-| Function tracked by Cleanup | **53 bytes** | 53 bytes | 106 bytes (sleitnick/trove) |
-| Resolved promise (`Promise.resolve`) | **416 bytes** | 608 bytes | |
-| Pending promise from `Then` (the promise, its link to the parent, the parent's queue entry) | **549 bytes** | 645 bytes | |
+| Per object | Constella | Compared with |
+| --- | ---: | --- |
+| Connected Signal listener | **160 bytes** | 176 (sleitnick/signal), 304 (LemonSignal) |
+| Function tracked by Cleanup | **53 bytes** | 52 (Janitor), 106 (sleitnick/trove) |
+| Resolved promise | **322 bytes** | 5,024 (evaera/roblox-lua-promise) |
+| Pending promise from `Then` | **242 bytes** | 2,896 (evaera/roblox-lua-promise) |
 
-The promise rows include the 16-byte array slot that keeps each promise. A resolved promise uses 32% less memory because the three bookkeeping lists every promise used to create up front are now created only when needed. `Promise.new` isn't listed: its executor thread is garbage as soon as it finishes, and heap growth would count it.
+The promise rows include the 16-byte array slot that keeps each promise. evaera's promises record a stack trace when they're created, which is most of their size.
 
 ## Leaks
 
-Each check releases 2,000 objects while their owner stays alive, then waits for the garbage collector. Two new checks (marked) cover references that the baseline kept:
+Each check releases 2,000 objects while their owner stays alive, then waits for the garbage collector. Both builds freed everything, in every check:
 
-| Check | Still alive afterwards | Baseline |
-| --- | ---: | ---: |
-| Signal: disconnected listeners (signal kept alive) | 0 of 2,000 | 0 |
-| **Signal: listeners of disconnected connections that are still referenced** (new) | **0 of 2,000** | **2,000** |
-| Cleanup: cleaned resources (manager kept alive) | 0 of 2,000 | 0 |
-| State: unsubscribed callbacks (state kept alive) | 0 of 2,000 | 0 |
-| Pool: objects destroyed past MaxIdle (pool kept alive) | 0 of 2,000 | 0 |
-| **Promise: values of the promises a kept chain came from** (new) | **0 of 2,000** | **2,000** |
+| Check | Still alive afterwards |
+| --- | ---: |
+| Signal: disconnected listeners (signal kept alive) | 0 of 2,000 |
+| Signal: listeners of disconnected connections that are still referenced | 0 of 2,000 |
+| Cleanup: cleaned resources (manager kept alive) | 0 of 2,000 |
+| State: unsubscribed callbacks (state kept alive) | 0 of 2,000 |
+| Pool: objects destroyed past MaxIdle (pool kept alive) | 0 of 2,000 |
+| Promise: values of the promises a kept chain came from | 0 of 2,000 |
 
-The unit tests include the same kind of checks (plus one for a player released during loading in Data), so a regression fails the test suite and not just this report.
+The unit tests include the same kind of checks (plus Data: a player released during loading; Zone: an untracked item), so a regression fails the test suite and not just this report.
 
 ## What the numbers say
 
-- **Signal matches sleitnick/signal like for like on a Roblox server.** With the same guarantee (each listener wrapped in `xpcall`), `Fire` costs the same, within 1%, from 1 to 1,000 listeners: about 0.22 µs per listener. Without error isolation, sleitnick/signal is about 13% faster; that's the cost of catching errors, and Constella always pays it.
-  - `Connect`+`Disconnect` is about 1.45× slower (0.18 vs 0.12 µs). That's the cost of guarantees sleitnick/signal doesn't make: checks for a destroyed signal and a non-function callback, listeners called in connection order, `O(1)` `Disconnect`, a connection count, snapshot `Fire`, and now releasing the listener on `Disconnect`. These are the noisiest rows in the report.
-  - It uses **less memory** per connection (160 vs 176 bytes).
-- **Cleanup is about 6× faster than Trove for functions, and uses half the memory.** For RBXScriptConnections they're the same, because the engine's own Disconnect dominates.
-- **Pool is about 2× faster** than cloning and destroying a Part each time.
-- **Network's full set of checks costs about 1 µs per request** on a server: rate limiting, payload measurement, schema validation and dispatch. 1,000 requests take about 1 ms of server time. Measuring the payload no longer allocates a closure per request, which saved 13–15%.
-- **`Random.choose` is now 4.3× faster.** It used to build an error label for every entry on every call, even when nothing was wrong. It still validates every entry, so for anything rolled often `Random.lootTable` remains the one to use: `lootTable:Roll` is 14× faster than `choose`, 1.5× faster than a hand-written precomputed linear scan and 4.6× faster than summing and scanning on every call.
-- **State `Set` is about 20% faster**, because it no longer allocates: notifications are queued in reused buffers instead of a new table per `Set` and two per flush.
-- **Promise** speed barely changes; the gain is memory (above) and, more importantly, that a kept promise no longer keeps the values of the promises it came from alive.
-
-## Studio and server numbers
-
-The earlier runs in [History](#history) were in Studio Edit mode. The same code runs faster on a Roblox server: Signal `Fire` with one listener took 0.41 µs in Studio and 0.25 µs here, Network 2.0 µs and 1.0 µs. Ratios between implementations were similar in both. Only compare numbers from the same run.
+- **Promise is the biggest change.** Executors and handlers now run on recycled threads instead of a new coroutine each, its state sits in a compact array, and `Then`, `Finally` and `Await` queue data instead of closures. `resolve` + `Then` + `Await` takes about half the time it did, a pending promise uses 56% less memory, and Constella's Promise is about 6.6× faster than evaera/roblox-lua-promise for a single step (2.9× for a 10-step chain) at a small fraction of the memory.
+- **Signal matches the like-for-like competition.** With per-listener error catching on all sides, `Fire` is within 3–11% of sleitnick/signal on this server (within 1% on the faster one used for v0.3.0) and faster than LemonSignal. `Connect`+`Disconnect` is about 1.25× sleitnick/signal's cost here: Constella also checks its arguments, keeps listeners in connection order, disconnects in `O(1)` and releases the listener on `Disconnect`. It uses the least memory per connection of the three.
+- **Cleanup is level with Janitor and about 6.6× faster than Trove** for functions, with half of Trove's memory. For RBXScriptConnections all three are close, because the engine's own `Disconnect` dominates.
+- **Pool is about 2.8× faster** than cloning and destroying a Part each time.
+- **Replication full sends got a third faster** by checking and measuring a value in one walk instead of two. **Delta** cuts the bytes for a small change to a 40-item inventory by 95% (1,929 → 90) for about 54% more server time per update than a full send. That's the usual trade: bandwidth is the scarcer resource on Roblox servers, which is why Delta exists, and why it's opt-in.
+- **Zone** costs about 0.3 µs per tracked item per step, 8–13% less than before: it no longer allocates per step, and built-in position getters skip the protected call.
+- **Random:** `lootTable:Roll` is 19× faster than `Random.choose` and 2× faster than a hand-written precomputed scan, so use a loot table for anything rolled often.
+- **A whole 50-player tick** of typical Constella work costs 0.36 ms on this slow server, 11% less than before.
 
 ## History
 
@@ -151,7 +175,7 @@ The latest change was measured as an A/B test in one session on 2026-11-14: each
 
 ### 0.3.0
 
-Measured A/B on a Roblox server against `main` before the change (the tables above).
+Measured A/B on a Roblox server against `main` before the change, in the run published with v0.3.0 (a faster server than the one above).
 
 - **Random.choose** formatted an error label (`"entry #%d Weight"`) for every entry on every call and built two arrays plus the cumulative sums. It now validates with a plain check and formats only on failure, and without modifiers it scans running sums instead of allocating. 4.3× faster. A test checks that it picks exactly what `lootTable:Roll` picks for 3,000 rolls.
 - **State** allocated a table per `Set` (the old value) and two per flush round. It now uses reused arrays: 16–20% faster.
@@ -160,18 +184,29 @@ Measured A/B on a Roblox server against `main` before the change (the tables abo
 - **Signal** `Disconnect` now clears the listener slot, so a kept connection no longer keeps its listener alive. A first version also cleared the signal and previous-node slots on every `Disconnect`; that cost 6–16% on `Connect`+`Disconnect` in two runs (before the run-order swap below) and rarely freed the signal (later connected nodes still reference it), so only `DisconnectAll` and `Destroy` clear those now. The cost that remains is within noise.
 - **Method:** within each run, the build that went first was always the current one, and the first case after the allocation-heavy Promise cases ran slower. Every other run now swaps the order. Promise memory first used 5,000-object builds, which overlapped garbage collection steps and gave impossible numbers (59 bytes for a 4-table object); it now uses 500-object builds.
 
+### After v0.3.0: recycled Promise threads, Delta, broader benchmarks
+
+Measured A/B against the v0.3.0 release on a Roblox server (the tables above).
+
+- **Promise** created a coroutine for every executor and every handler, three closures per `Then`, and kept its state in a hash table. Executors and handlers now run on recycled runner threads (like Signal's listeners), `Then`/`Finally`/`Await` queue data instead of closures, and the state lives in the array part. `resolve` + `Then` + `Await` is 47% faster and a pending promise 56% smaller. Two memory tests needed one extra job before checking, because an idle runner can hold its last job's values in unused stack slots (bounded, as with Signal).
+- **Replication** walked each value twice (a type check, then the size estimate). One walk now does both: full sends are 33% faster. The new opt-in **Delta** mode first deep-copied every value and then diffed it, which made an update 63% slower than v0.3.0's full send; building the private copy during the diff, reusing every unchanged part, brought it level with v0.3.0's full send (39.5 vs 38.1 µs) while sending 95% fewer bytes.
+- **Zone** cloned its item list and allocated a table on every step, and wrapped every position getter in a protected call. It now reuses a buffer and calls the built-in getters directly: 8–13% faster.
+- **Signal** kept a per-signal id counter and connection count up to date on every `Connect` and `Disconnect`. It now uses one counter shared by all signals and counts on demand in `GetConnectionCount`. The change is within noise on these servers.
+- **Network** wrapped payload measurement in its own protected call; the whole check already runs in one. Small gain (about 6%).
+- **Benchmark method:** added LemonSignal, Janitor and evaera/roblox-lua-promise; Zone, Replication (time and bytes), Data, Component and a 50-player tick; 7 runs; a bootstrap confidence interval for every A/B ratio; and a CI gate for regressions. The first run with Janitor made it look free (0 bytes, 2× faster than Constella), because every case added the same function and Janitor keys entries by object, so it kept one entry; every library now gets distinct functions. The Delta case first compared Delta against v0.3.0's full sends under the same label and tripped the new gate (+63%); cases for features a build doesn't have are now skipped for that build.
+
 ## How to run
 
-**On a Roblox server (CI).** Every pull request runs the suite on a Roblox server through Open Cloud, comparing the pull request with its base commit in the same session, and adds the report to the job summary of the "Test suite on a Roblox server" job. It's informational and never fails the run. The scripts are [`.github/scripts/roblox_bench.py`](https://github.com/Layfate/Constella/blob/main/.github/scripts/roblox_bench.py) and the "Build the benchmark place" step in [`ci.yml`](https://github.com/Layfate/Constella/blob/main/.github/workflows/ci.yml).
+**On a Roblox server (CI).** Every pull request runs the suite (7 runs) on a Roblox server through Open Cloud, comparing the pull request with its base commit in the same session, with the comparison libraries downloaded at pinned commits and checked by SHA-256. The report goes into the job summary of the "Test suite on a Roblox server" job. **A regression fails the run:** any case more than 10% slower than the base commit, with its 95% confidence interval above +5%. Problems reaching Roblox or GitHub only produce a warning, so an outage can't block a pull request. The scripts are [`.github/scripts/roblox_bench.py`](https://github.com/Layfate/Constella/blob/main/.github/scripts/roblox_bench.py) and the "Build the benchmark place" step in [`ci.yml`](https://github.com/Layfate/Constella/blob/main/.github/workflows/ci.yml).
 
 **In Studio.**
 
 1. Open the dev place (`rojo serve dev.project.json`).
-2. Optionally, to compare with other libraries, add ModuleScripts named `Signal` (sleitnick/signal) and `Trove` (sleitnick/trove) to a Folder named `BenchmarkLibs` in `ServerStorage`. Missing libraries are skipped.
+2. Optionally, to compare with other libraries, add ModuleScripts named `Signal` (sleitnick/signal), `LemonSignal`, `Trove` (sleitnick/trove), `Janitor` (with its `Promise` child module) and `Promise` (evaera/roblox-lua-promise) to a Folder named `BenchmarkLibs` in `ServerStorage`. Missing libraries are skipped.
 3. In the Studio command bar (Edit mode, nothing else running), run:
 
 ```lua
-print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)({ Runs = 5 }))
+print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)({ Runs = 7 }))
 ```
 
 To compare two builds of the package, put the second one next to the first (for example as `ReplicatedStorage.Packages.ConstellaBaseline`) and pass both:
@@ -179,7 +214,7 @@ To compare two builds of the package, put the second one next to the first (for 
 ```lua
 local Packages = game.ReplicatedStorage.Packages
 print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)({
-	Runs = 5,
+	Runs = 7,
 	Packages = {
 		{ Name = "this build", Module = Packages.Constella },
 		{ Name = "baseline", Module = Packages.ConstellaBaseline },
@@ -187,4 +222,4 @@ print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)({
 }))
 ```
 
-It takes about 30 seconds per build and prints Markdown tables like the ones above, including every run's result. The code is in [`benchmarks/`](https://github.com/Layfate/Constella/tree/main/benchmarks).
+It takes about a minute per build and prints Markdown tables like the ones above: every run's result, the A/B comparison with confidence intervals, and any regressions. The code is in [`benchmarks/`](https://github.com/Layfate/Constella/tree/main/benchmarks).

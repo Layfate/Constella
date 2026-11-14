@@ -11,8 +11,9 @@ Promise.retry(fetchLeaderboard, { Attempts = 3, Delay = 0.5 })
 
 ## Guarantees
 
-- The executor `function(resolve, reject, onCancel)` runs immediately on its own thread and may yield.
-- Handlers run on their own threads, in the order they were attached. Attaching a handler to a promise that has already settled runs it straight away.
+- The executor `function(resolve, reject, onCancel)` runs immediately on a thread of its own and may yield.
+- Handlers run the same way, in the order they were attached, and one that yields never delays the others. Attaching a handler to a promise that has already settled runs it straight away.
+- **Threads are recycled,** the way [Signal](Signal.md) runs listeners: an executor or handler that doesn't yield hands its thread to the next one, instead of a new coroutine being created each time. That's most of why Promise is about 2× faster than its earlier thread-per-handler design and 6–7× faster than evaera/roblox-lua-promise (see [Benchmarks](Benchmarks.md)). If user code cancels a recycled thread (for example by adding `coroutine.running()` to a Cleanup), the next job simply gets a new one.
 - An error thrown in an executor or handler rejects with a `PromiseError` (`Kind = "ExecutionError"`, plus `Message` and `Trace`). Tables passed to `error()` are passed through unchanged.
 - Resolving with another promise adopts that promise's outcome.
 - **No silent failures.** A rejection that nothing handles (no `Then`/`Catch`/`Finally`/`Await`) by the next resumption point is reported as an error in the output.
@@ -51,3 +52,7 @@ Promise.retry(fetchLeaderboard, { Attempts = 3, Delay = 0.5 })
 | `Promise.setUnhandledRejectionHandler(fn?)` | Replaces the reporter for every promise and returns the previous one. For tests and custom reporting |
 
 `Cleanup:Add(promise)` cancels the promise when the Cleanup is cleaned.
+
+## Limitations
+
+- As with any thread reuse (Signal does the same), an idle recycled thread can keep the values of the last executor or handler it ran reachable, in unused stack slots, until it runs the next one. That's bounded to one call and isn't a leak.
