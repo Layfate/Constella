@@ -66,7 +66,7 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	local Trove = libs and libs:FindFirstChild("Trove") and require(libs.Trove :: any)
 
 	-- Speed cases ----------------------------------------------------------
-	local cases = {}
+	local cases: { any } = {}
 	local function case(group, name, implementation, iterations, run)
 		table.insert(cases, {
 			group = group,
@@ -343,7 +343,7 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	-- The same cases with the builds of each implementation in reverse order.
 	-- Every other run uses it, so no build always runs first (straight after
 	-- the previous case, whose garbage the collector may still be working on).
-	local reversed = {}
+	local reversed: { any } = {}
 	local first = 1
 	while first <= #cases do
 		local last = first
@@ -357,7 +357,8 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	end
 
 	for run = 1, runs do
-		for _, entry in if run % 2 == 0 then reversed else cases do
+		local order = if run % 2 == 0 then reversed else cases
+		for _, entry in order do
 			local median = Bench.measure(entry.run, entry.iterations, 5)
 			table.insert(entry.samples, median)
 		end
