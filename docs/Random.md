@@ -14,6 +14,66 @@ local lucky = chest:Roll(nil, { Luck = 0.5 })
 
 Roll rewards **on the server**. Never accept a roll result, luck value or multiplier from a client.
 
+## Server-authoritative rewards
+
+The client only says *what* it wants to open. The price, the odds, the roll and the reward all stay on the server, and the client gets the result to display:
+
+```lua
+-- Server (inside a service)
+local Network = Constella.Network
+local Check = Network.Check
+local R = Constella.Random
+
+local CHESTS = {
+	Basic = {
+		Price = 100,
+		Loot = R.lootTable({
+			{ Value = "Wood Sword", Weight = 60 },
+			{ Value = "Star Blade", Weight = 9 },
+		}),
+	},
+}
+
+local server = context.Cleanup:Add(Network.Server.new("Chests"))
+local open = server:Function("Open", {
+	Schema = { Check.literal("Basic") }, -- only chests that exist
+	RateLimit = { Count = 2, Per = 1 },
+})
+
+open:SetHandler(function(player, chestId)
+	local profile = store:Get(player) -- a Data profile; nil until loaded
+	if profile == nil then
+		return "NotReady"
+	end
+	local chest = CHESTS[chestId]
+	if profile:Get("Coins") < chest.Price then
+		return "NotEnoughCoins"
+	end
+	-- Pay and roll in the same handler call, before anything yields,
+	-- so two quick requests can't both pass the price check.
+	profile:Update("Coins", function(coins)
+		return coins - chest.Price
+	end)
+	local item = chest.Loot:Roll()
+	profile:Update("Inventory", function(inventory)
+		local updated = table.clone(inventory)
+		table.insert(updated, item)
+		return updated
+	end)
+	return "Opened", item
+end)
+```
+
+```lua
+-- Client: only shows what the server decided
+local ok, status, item = chests:Function("Open", { Timeout = 5 }):Invoke("Basic")
+```
+
+- **Validate the request, not the result.** `Check.literal` rejects unknown chest ids before the handler runs, and the rate limit stops spamming.
+- **Check and pay before anything yields.** Handlers run on their own threads, so a check that yields before paying lets a second request see the old balance.
+- **Keep the odds server-side.** Use `chest.Loot:GetChances()` to send the odds to the client for display if you want to show them.
+- **Don't seed from anything the client controls.** The default `Random.new()` per table is fine. A seed the client can predict lets it predict rolls.
+
 ## The math
 
 - Weights must be finite numbers ≥ 0. NaN, negatives, infinities and non-numbers raise an error that names the entry. At least one weight has to be positive, and every entry needs a non-nil `Value` (use a sentinel like `false` or `"Nothing"` for empty drops).

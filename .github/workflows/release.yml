@@ -1,0 +1,52 @@
+name: Release
+
+# When a GitHub release is published, build Constella.rbxm from the tagged
+# source with the pinned Rojo and attach it to that release.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  ROJO_VERSION: v7.4.4
+
+jobs:
+  package:
+    name: Build and attach Constella.rbxm
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Install Rojo (pinned)
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          gh release download "$ROJO_VERSION" --repo rojo-rbx/rojo --pattern "rojo-${ROJO_VERSION#v}-linux-x86_64.zip"
+          unzip -o -q "rojo-${ROJO_VERSION#v}-linux-x86_64.zip" -d "$RUNNER_TEMP/bin"
+          chmod +x "$RUNNER_TEMP/bin/rojo"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Check the version matches the tag
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version=$(sed -n 's/^local VERSION = "\(.*\)"$/\1/p' src/shared/Constella/init.luau)
+          if [ "v$version" != "$tag" ]; then
+            echo "::error::init.luau says $version but the release tag is $tag"
+            exit 1
+          fi
+
+      - name: Build
+        run: |
+          mkdir -p build
+          rojo build default.project.json -o build/Constella.rbxm
+          sha256sum build/Constella.rbxm
+
+      - name: Attach to the release
+        run: gh release upload "${{ github.event.release.tag_name }}" build/Constella.rbxm --clobber

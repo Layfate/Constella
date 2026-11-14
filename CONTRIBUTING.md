@@ -91,6 +91,13 @@ luau-lsp analyze --platform=roblox --sourcemap=sourcemap.json \
 
 More detail is in [docs/Architecture.md](docs/Architecture.md).
 
+## Releasing
+
+1. Set the new version in `src/shared/Constella/init.luau`, `wally.toml`, `pesde.toml`, the README badge and install lines, `docs/README.md` and `tests/server/Root.spec.luau`.
+2. Turn the changelog's Unreleased section into the new version, with upgrade notes for any behaviour change.
+3. Run the whole suite in Studio, push, and wait for CI.
+4. Publish a GitHub release with the tag `vX.Y.Z`. The release workflow builds `Constella.rbxm` from that tag and attaches it.
+
 ## Pull requests
 
 - Add or update tests for any behaviour you change, and make sure the whole suite passes in Studio.

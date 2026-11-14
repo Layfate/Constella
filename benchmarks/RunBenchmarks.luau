@@ -78,6 +78,18 @@ return function(options: { Runs: number? }?): string
 				signal:Fire(1, 2)
 			end
 		end)
+		-- Larger counts show whether the cost per listener stays constant.
+		for _, listeners in { 100, 1000 } do
+			case("Signal", ("Fire, %d listeners"):format(listeners), label, 50000 // listeners, function(n)
+				local signal = new()
+				for _ = 1, listeners do
+					signal:Connect(wrap(noop))
+				end
+				for _ = 1, n do
+					signal:Fire(1, 2)
+				end
+			end)
+		end
 	end
 	local function plain(fn)
 		return fn
@@ -174,6 +186,38 @@ return function(options: { Runs: number? }?): string
 	case("Random", "Weighted roll, 100 entries", "Random.lootTable:Roll (precomputed)", 50000, function(n)
 		for _ = 1, n do
 			loot:Roll(rng)
+		end
+	end)
+	-- Hand-written baselines without any validation, so the comparison is
+	-- about the selection algorithm and not only about validation cost.
+	case("Random", "Weighted roll, 100 entries", "Hand-written: sum, then linear scan (each call)", 5000, function(n)
+		for _ = 1, n do
+			local total = 0
+			for _, entry in entries do
+				total += entry.Weight
+			end
+			local roll = rng:NextNumber() * total
+			for _, entry in entries do
+				roll -= entry.Weight
+				if roll < 0 then
+					break
+				end
+			end
+		end
+	end)
+	local cumulative, cumulativeTotal = table.create(#entries), 0
+	for index, entry in entries do
+		cumulativeTotal += entry.Weight
+		cumulative[index] = cumulativeTotal
+	end
+	case("Random", "Weighted roll, 100 entries", "Hand-written: precomputed totals, linear scan", 50000, function(n)
+		for _ = 1, n do
+			local roll = rng:NextNumber() * cumulativeTotal
+			for index = 1, #cumulative do
+				if roll < cumulative[index] then
+					break
+				end
+			end
 		end
 	end)
 
