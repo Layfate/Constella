@@ -15,10 +15,10 @@ export type Config = {
 }
 
 export type RateLimiter = {
-	Consume: (self: any, key: any, cost: number?) -> boolean,
-	Forget: (self: any, key: any) -> (),
-	GetTokens: (self: any, key: any) -> number,
-	Clear: (self: any) -> (),
+	Consume: (self: RateLimiter, key: any, cost: number?) -> boolean,
+	Forget: (self: RateLimiter, key: any) -> (),
+	GetTokens: (self: RateLimiter, key: any) -> number,
+	Clear: (self: RateLimiter) -> (),
 }
 
 local PREFIX = "[Constella.Network] "

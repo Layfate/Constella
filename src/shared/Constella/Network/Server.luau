@@ -73,27 +73,27 @@ export type EndpointStats = {
 
 export type ServerEvent = {
 	Name: string,
-	Connect: (self: any, handler: (player: Player, ...any) -> ()) -> Signal.Connection,
-	Fire: (self: any, player: Player, ...any) -> (),
-	FireAll: (self: any, ...any) -> (),
-	FireList: (self: any, players: { Player }, ...any) -> (),
-	FireExcept: (self: any, except: Player, ...any) -> (),
-	Destroy: (self: any) -> (),
+	Connect: (self: ServerEvent, handler: (player: Player, ...any) -> ()) -> Signal.Connection,
+	Fire: (self: ServerEvent, player: Player, ...any) -> (),
+	FireAll: (self: ServerEvent, ...any) -> (),
+	FireList: (self: ServerEvent, players: { Player }, ...any) -> (),
+	FireExcept: (self: ServerEvent, except: Player, ...any) -> (),
+	Destroy: (self: ServerEvent) -> (),
 }
 
 export type ServerFunction = {
 	Name: string,
-	SetHandler: (self: any, handler: (player: Player, ...any) -> ...any) -> (),
-	Destroy: (self: any) -> (),
+	SetHandler: (self: ServerFunction, handler: (player: Player, ...any) -> ...any) -> (),
+	Destroy: (self: ServerFunction) -> (),
 }
 
 export type Server = {
 	Namespace: string,
 	Folder: Folder,
-	Event: (self: any, name: string, config: EndpointConfig?) -> ServerEvent,
-	Function: (self: any, name: string, config: EndpointConfig) -> ServerFunction,
-	GetStats: (self: any) -> { [string]: EndpointStats },
-	Destroy: (self: any) -> (),
+	Event: (self: Server, name: string, config: EndpointConfig?) -> ServerEvent,
+	Function: (self: Server, name: string, config: EndpointConfig) -> ServerFunction,
+	GetStats: (self: Server) -> { [string]: EndpointStats },
+	Destroy: (self: Server) -> (),
 }
 
 local PREFIX = "[Constella.Network] "

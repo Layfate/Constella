@@ -25,18 +25,18 @@
 ]=]
 
 export type Cleanup = {
-	Add: <T>(self: any, resource: T, method: string?) -> T,
-	Set: <T>(self: any, key: any, resource: T, method: string?) -> T,
-	Get: (self: any, key: any) -> any,
-	Remove: (self: any, keyOrResource: any) -> boolean,
-	Detach: (self: any, keyOrResource: any) -> any,
-	Connect: (self: any, signal: any, callback: (...any) -> ()) -> any,
-	Extend: (self: any) -> Cleanup,
-	AttachToInstance: (self: any, instance: Instance) -> any,
-	Clean: (self: any) -> (),
-	Destroy: (self: any) -> (),
-	Count: (self: any) -> number,
-	IsDestroyed: (self: any) -> boolean,
+	Add: <T>(self: Cleanup, resource: T, method: string?) -> T,
+	Set: <T>(self: Cleanup, key: any, resource: T, method: string?) -> T,
+	Get: (self: Cleanup, key: any) -> any,
+	Remove: (self: Cleanup, keyOrResource: any) -> boolean,
+	Detach: (self: Cleanup, keyOrResource: any) -> any,
+	Connect: (self: Cleanup, signal: any, callback: (...any) -> ()) -> any,
+	Extend: (self: Cleanup) -> Cleanup,
+	AttachToInstance: (self: Cleanup, instance: Instance) -> any,
+	Clean: (self: Cleanup) -> (),
+	Destroy: (self: Cleanup) -> (),
+	Count: (self: Cleanup) -> number,
+	IsDestroyed: (self: Cleanup) -> boolean,
 }
 
 -- Storage: two parallel arrays, so tracking a plain resource costs two

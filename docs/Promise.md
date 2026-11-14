@@ -19,6 +19,14 @@ Promise.retry(fetchLeaderboard, { Attempts = 3, Delay = 0.5 })
 - **Cancellation.** `Cancel()` settles a pending promise as `"Cancelled"`, runs its `onCancel` hooks and cancels everything chained from it. A chained promise that's cancelled also cancels its parent once the parent has no other consumers, so cancelling the end of a chain stops the work behind it.
 - `all` and `race` cancel the losing promises *before* they settle. Anyone who resumes from `Await` therefore sees the losers already stopped.
 
+## Types
+
+`Promise<T>` resolves with a `T`. `Promise.resolve(5)` is a `Promise<number>`, `Promise.delay` a `Promise<number>`, and Data's `store:LoadAsync(player)` a `Promise<Profile<T>>`, so `:Expect()` returns a typed value.
+
+- `:Then` and `:Catch` return an `AnyPromise`, because the handler decides the next value and Luau can't express "a promise of whatever the handler returns". Cast it if you need the type: `local p = (a:Then(f) :: any) :: Promise<number>`.
+- `:Await()` returns `(boolean, any)`: the second value is the value on success but the rejection reason on failure, so it can't be typed `T`.
+- `Promise.new`, `Promise.all` and `Promise.race` return `Promise<any>`, because their value types can't be inferred.
+
 ## API
 
 | Member | Description |

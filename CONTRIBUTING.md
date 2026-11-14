@@ -82,7 +82,7 @@ luau-lsp analyze --platform=roblox --sourcemap=sourcemap.json \
 
 ## Conventions
 
-- `--!strict` and exported types on every public API.
+- `--!strict` and exported types on every public API. Exported class types give methods a real `self` type (`Connect: (self: Signal<T...>, ...)`), so users get autocomplete and type errors. The implementations themselves (`function SignalClass.Connect(self: any, ...)`) keep `self: any`, because they read private `_fields` that the public types deliberately leave out.
 - Constructors are `X.new(...)`. Module-level functions are lowerCamelCase (`State.computed`). Methods and option keys are PascalCase (`:Connect`, `{ OnError = ... }`).
 - Every class has `X.is(value)`. Every disposable object has an idempotent `:Destroy()`, so it can be added to a Cleanup.
 - No globals and no singleton services. Modules load lazily from the root.

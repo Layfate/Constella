@@ -55,19 +55,19 @@ export type ClientOptions = {
 
 export type Share = {
 	Name: string,
-	Stop: (self: any) -> (),
+	Stop: (self: Share) -> (),
 }
 
 export type ReplicationServer = {
-	Share: (self: any, name: string, state: any) -> Share,
-	ShareWith: (self: any, player: Player, name: string, state: any) -> Share,
-	Destroy: (self: any) -> (),
+	Share: (self: ReplicationServer, name: string, state: any) -> Share,
+	ShareWith: (self: ReplicationServer, player: Player, name: string, state: any) -> Share,
+	Destroy: (self: ReplicationServer) -> (),
 }
 
 export type ReplicationClient = {
-	Get: (self: any, name: string) -> State.Computed<any>,
-	Observe: (self: any, name: string, callback: (value: any) -> ()) -> State.Connection,
-	Destroy: (self: any) -> (),
+	Get: (self: ReplicationClient, name: string) -> State.Computed<any>,
+	Observe: (self: ReplicationClient, name: string, callback: (value: any) -> ()) -> State.Connection,
+	Destroy: (self: ReplicationClient) -> (),
 }
 
 local PREFIX = "[Constella.Replication] "
