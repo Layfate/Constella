@@ -2,6 +2,23 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
+## Unreleased (version number still 0.3.0)
+
+Performance and benchmarking work on top of the v0.3.0 release. No public function was removed or changed its behaviour; one option was added (Replication `Delta`).
+
+### Added
+- **Replication:** `Replication.Server.new(namespace, { Delta = true })` sends a change from one table to another as a patch (only what changed, recursively) whenever that's smaller than the whole value: 90 bytes instead of 1,929 for one changed field of a 40-item inventory. The server diffs against a private copy of what clients have, so editing a table in place and then setting a copy still replicates every change. A patch that arrives early is held until the value it builds on arrives; one that can't be applied makes the client fetch a fresh snapshot. Off by default. See [Replication](docs/Replication.md#delta-updates).
+- **Network:** `Payload.measureReplicable(limits, value)`, which also rejects values that can't be replicated, in the same walk.
+- **Benchmarks:** LemonSignal, Janitor and evaera/roblox-lua-promise as competitors (pinned by commit and SHA-256); Zone, Replication (time and bytes), Data, Component and a 50-player server tick; 7 runs; a 95% bootstrap confidence interval for every A/B comparison. **CI now fails a pull request** when a case is more than 10% slower than its base commit with the interval above +5%.
+- **Tests:** 15 more (268), including Delta round trips over random tables, 300 random updates kept in sync with in-place edits, held and out-of-order patches, resync, recycled Promise threads, and Zone re-entrancy. The Studio Play-mode Replication test also covers Delta.
+
+### Changed
+- **Promise:** executors and handlers run on recycled threads, like Signal's listeners, instead of a new coroutine each; `Then`, `Finally` and `Await` queue data instead of closures; state is stored compactly. `resolve` + `Then` + `Await` is 47% faster, and a pending promise uses 56% less memory (242 bytes; evaera's uses 2,896). Handlers still run in order, each on a thread of its own, and one that yields never delays the others.
+- **Replication:** a value is checked and measured in one walk instead of two: publishing is 33% faster.
+- **Zone:** no table copy per step, and no protected call around the built-in position getters (they can't raise): 8–13% faster. Position callback errors are reported after the step's loop.
+- **Signal:** one connection counter shared by every signal, and no per-signal count to maintain; `GetConnectionCount` now counts the list.
+- **Network:** payload measurement no longer has its own protected call (the whole check already runs in one): about 6% faster per request.
+
 ## 0.3.0 — 2026-11-14
 
 Typed public API, Data out of beta, fixes for cancelled waiting threads and for references kept longer than needed, and fewer allocations on hot paths. No modules or public functions were removed, and no behaviour changed except as listed under Fixed.

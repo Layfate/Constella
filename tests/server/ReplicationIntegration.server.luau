@@ -30,9 +30,22 @@ for _, player in Players:GetPlayers() do
 	onPlayer(player)
 end
 
+-- Delta mode: a 40-item inventory whose coins change three times, so the
+-- client receives patches rather than whole values.
+local deltaReplicator = Constella.Replication.Server.new("ConstellaReplicationDeltaTest", { Delta = true })
+local items = {}
+for index = 1, 40 do
+	items[index] = { Id = "Item" .. index, Count = index }
+end
+local inventory = State.new({ Coins = 0, Items = items })
+deltaReplicator:Share("Inventory", inventory)
+
 task.spawn(function()
 	for value = 1, 3 do
 		task.wait(1)
 		tick:Set(value)
+		local nextValue = table.clone(inventory:Get())
+		nextValue.Coins = value
+		inventory:Set(nextValue)
 	end
 end)

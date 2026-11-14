@@ -7,6 +7,11 @@ measured in the same server session, alternating case by case, so they can
 be compared directly. The Markdown report is printed and, on GitHub Actions,
 added to the job summary.
 
+Exit status: 1 if the report lists a regression (a case more than 10% slower
+than the baseline, with the 95% confidence interval above +5%), otherwise 0.
+Problems reaching Roblox only produce a warning, so an outage can't block a
+pull request.
+
 Environment: ROBLOX_API_KEY, ROBLOX_UNIVERSE_ID, ROBLOX_PLACE_ID.
 
 Usage: python roblox_bench.py <place-file.rbxl> [runs]
@@ -29,6 +34,11 @@ return require(ServerStorage.ConstellaBenchmarks.RunBenchmarks)({ Runs = {runs},
 """
 
 
+def warn_and_exit(message):
+    print(f"::warning::Benchmarks skipped: {message}")
+    sys.exit(0)
+
+
 def main():
     if len(sys.argv) not in (2, 3):
         sys.exit(__doc__)
@@ -40,17 +50,19 @@ def main():
     )
     with open(sys.argv[1], "rb") as file:
         place_file = file.read()
-    print(f"Published benchmark place version {roblox.publish(place_file)} ({len(place_file)} bytes)")
-
-    path = roblox.start(SCRIPT.replace("{runs}", str(runs)))
-    task = roblox.wait(path)
-    roblox.print_logs("benchmarks", path)
+    try:
+        print(f"Published benchmark place version {roblox.publish(place_file)} ({len(place_file)} bytes)")
+        path = roblox.start(SCRIPT.replace("{runs}", str(runs)))
+        task = roblox.wait(path)
+        roblox.print_logs("benchmarks", path)
+    except SystemExit as error:  # request() exits on HTTP failures
+        warn_and_exit(error.code)
     if task["state"] != "COMPLETE":
         error = task.get("error", {})
-        sys.exit(f"Benchmark task {task['state']}: {error.get('code')}: {error.get('message')}")
+        warn_and_exit(f"task {task['state']}: {error.get('code')}: {error.get('message')}")
     report = (task.get("output", {}).get("results") or [None])[0]
     if not isinstance(report, str):
-        sys.exit(f"Unexpected benchmark output: {task.get('output')}")
+        warn_and_exit(f"unexpected output {task.get('output')}")
 
     print(report)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -59,6 +71,13 @@ def main():
             file.write("## Benchmarks on a Roblox server\n\n")
             file.write("`[this build]` is this pull request; `[baseline]` is its base commit.\n\n")
             file.write(report + "\n")
+
+    regressions = [line for line in report.splitlines() if line.startswith("REGRESSION |")]
+    for line in regressions:
+        print(f"::error::{line}")
+    if regressions:
+        sys.exit(1)
+    print("No benchmark regressions")
 
 
 if __name__ == "__main__":

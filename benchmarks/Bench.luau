@@ -1,4 +1,5 @@
 --!strict
+--!nolint DeprecatedApi
 --[=[
 	Benchmark helpers.
 
@@ -18,6 +19,13 @@
 		In testing this gave identical results across repeated rounds,
 		whereas the median of large builds did not.
 
+	ratioInterval(a, b, rng)
+		For two lists of per-run results (a = this build, b = baseline),
+		returns median(a) / median(b) and a 95% bootstrap confidence
+		interval for that ratio: both lists are resampled with replacement
+		2,000 times. A change whose interval doesn't include 1 is unlikely
+		to be noise.
+
 	leakCheck(build, timeoutSeconds)
 		Proves that objects become collectable once released. build()
 		returns (objects, release): every object is put in a weak-keyed
@@ -29,6 +37,28 @@
 ]=]
 
 local Bench = {}
+
+-- Heap size in KB. collectgarbage("count") has sub-KB precision (gcinfo()
+-- returns whole KB, hence the lint exception above); gcinfo() is the fallback.
+local function heapKB(): number
+	local ok, value = pcall(collectgarbage :: any, "count")
+	if ok and type(value) == "number" then
+		return value
+	end
+	return gcinfo()
+end
+Bench.heapKB = heapKB
+
+local function median(values: { number }): number
+	local sorted = table.clone(values)
+	table.sort(sorted)
+	local count = #sorted
+	if count % 2 == 1 then
+		return sorted[(count + 1) // 2]
+	end
+	return (sorted[count // 2] + sorted[count // 2 + 1]) / 2
+end
+Bench.median = median
 
 function Bench.measure(run: (iterations: number) -> (), iterations: number, trials: number?): (number, number, number)
 	local count = trials or 5
@@ -51,14 +81,31 @@ function Bench.bytesPerObject(build: (count: number) -> any, count: number, tria
 	local samples = table.create(runs)
 	for _ = 1, runs do
 		task.wait()
-		local before = gcinfo()
+		local before = heapKB()
 		local _keep = build(count)
-		local after = gcinfo()
+		local after = heapKB()
 		table.insert(samples, (after - before) * 1024 / count)
 		_keep = nil
 	end
 	table.sort(samples)
 	return math.max(0, samples[math.ceil(runs * 0.8)])
+end
+
+function Bench.ratioInterval(a: { number }, b: { number }, rng: Random): (number, number, number)
+	local ratio = median(a) / median(b)
+	local samples = table.create(2000)
+	local resampledA, resampledB = table.create(#a), table.create(#b)
+	for index = 1, 2000 do
+		for slot = 1, #a do
+			resampledA[slot] = a[rng:NextInteger(1, #a)]
+		end
+		for slot = 1, #b do
+			resampledB[slot] = b[rng:NextInteger(1, #b)]
+		end
+		samples[index] = median(resampledA) / median(resampledB)
+	end
+	table.sort(samples)
+	return ratio, samples[50], samples[1951]
 end
 
 function Bench.leakCheck(build: () -> ({ any }, () -> ()), timeoutSeconds: number?): (number, number)

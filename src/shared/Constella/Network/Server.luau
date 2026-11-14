@@ -123,7 +123,7 @@ end
 
 local function reject(endpoint: any, player: any, reason: RejectReason, detail: string?)
 	local server = endpoint._server
-	local stats = server._stats[endpoint.Name]
+	local stats = endpoint._stats
 	stats.Rejected[reason] = (stats.Rejected[reason] or 0) + 1
 	if server._onReject then
 		local ok, err = pcall(server._onReject, player, endpoint.Name, reason, detail)
@@ -155,14 +155,10 @@ local function admit(endpoint: any, player: any, ...: any): (boolean, RejectReas
 		reject(endpoint, player, "RateLimited", nil)
 		return false, "RateLimited"
 	end
-	local measured, size, sizeReason = pcall(Payload.measure, endpoint._payloadLimits, ...)
-	if not measured then
-		endpoint._server._onError(
-			PREFIX .. ("Measuring a payload for '%s' failed: %s"):format(endpoint.Name, tostring(size))
-		)
-		reject(endpoint, player, "PayloadTooLarge", "payload could not be measured")
-		return false, "PayloadTooLarge"
-	end
+	-- Measuring only reads the values a client sent, which can't carry
+	-- metatables, so it can't raise. (The whole check also runs inside a
+	-- protected call in _receive/_invoke.)
+	local size, sizeReason = Payload.measure(endpoint._payloadLimits, ...)
 	if size == nil then
 		reject(endpoint, player, "PayloadTooLarge", sizeReason)
 		return false, "PayloadTooLarge"
@@ -196,7 +192,7 @@ local function admit(endpoint: any, player: any, ...: any): (boolean, RejectReas
 			return false, "Unauthorized"
 		end
 	end
-	endpoint._server._stats[endpoint.Name].Accepted += 1
+	endpoint._stats.Accepted += 1
 	return true
 end
 
@@ -273,8 +269,10 @@ local function createEndpoint(
 		_destroyed = false,
 	}, class)
 
+	local stats = { Accepted = 0, Rejected = {} }
+	endpoint._stats = stats
 	server._endpoints[name] = endpoint
-	server._stats[name] = { Accepted = 0, Rejected = {} }
+	server._stats[name] = stats
 	return endpoint
 end
 
