@@ -1,7 +1,10 @@
 name: Release
 
-# When a GitHub release is published, build Constella.rbxm from the tagged
-# source with the pinned Rojo and attach it to that release.
+# When a GitHub release is published:
+# 1. build Constella.rbxm from the tagged source with the pinned Rojo and
+#    attach it to the release;
+# 2. publish the tag to Wally and pesde, if their tokens are set
+#    (secrets WALLY_TOKEN and PESDE_TOKEN; otherwise that step is skipped).
 
 on:
   release:
@@ -12,6 +15,9 @@ permissions:
 
 env:
   ROJO_VERSION: v7.4.4
+  WALLY_VERSION: v0.3.2
+  PESDE_VERSION: v0.7.4+registry.0.2.3
+  PESDE_ASSET: pesde-0.7.4-linux-x86_64.zip
 
 jobs:
   package:
@@ -56,3 +62,48 @@ jobs:
 
       - name: Attach to the release
         run: gh release upload "${{ github.event.release.tag_name }}" build/Constella.rbxm --clobber
+
+  registries:
+    name: Publish to Wally and pesde
+    needs: package
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WALLY_TOKEN: ${{ secrets.WALLY_TOKEN }}
+      PESDE_TOKEN: ${{ secrets.PESDE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Install Wally and pesde (pinned)
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools" "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP/tools"
+          gh release download "$WALLY_VERSION" --repo UpliftGames/wally --pattern "wally-${WALLY_VERSION}-linux.zip"
+          gh release download "$PESDE_VERSION" --repo pesde-pkg/pesde --pattern "$PESDE_ASSET"
+          for archive in *.zip; do unzip -o -q "$archive" -d "$RUNNER_TEMP/bin"; done
+          chmod +x "$RUNNER_TEMP/bin"/*
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Check the packages contain only the library
+        run: python3 .github/scripts/check_packages.py
+
+      - name: Publish to Wally
+        run: |
+          if [ -z "$WALLY_TOKEN" ]; then
+            echo "::notice::WALLY_TOKEN isn't set; skipping Wally."
+            exit 0
+          fi
+          wally login --token "$WALLY_TOKEN"
+          wally publish
+
+      - name: Publish to pesde
+        run: |
+          if [ -z "$PESDE_TOKEN" ]; then
+            echo "::notice::PESDE_TOKEN isn't set; skipping pesde."
+            exit 0
+          fi
+          pesde auth login --token "$PESDE_TOKEN"
+          pesde install
+          pesde publish --yes

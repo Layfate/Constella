@@ -5,12 +5,12 @@ description = "A modular Luau toolkit for Roblox by Zense: app lifecycle, signal
 authors = ["Zense"]
 license = "MIT"
 repository = "https://github.com/Layfate/Constella"
-includes = ["src/shared/Constella/**", "default.project.json", "pesde.toml", "README.md", "LICENSE"]
+includes = ["src/shared/Constella/**", "pesde.toml", "README.md", "LICENSE"]
 
 [target]
 environment = "roblox"
 lib = "src/shared/Constella/init.luau"
-build_files = ["src/shared/Constella"]
+build_files = ["src"]
 
 [indices]
 default = "https://github.com/pesde-pkg/index"

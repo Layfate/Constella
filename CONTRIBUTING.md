@@ -107,7 +107,9 @@ The integration tests also work in Studio's **Server & Clients** mode: every cli
 1. Set the new version in `src/shared/Constella/init.luau`, `wally.toml`, `pesde.toml`, the README badge and install lines, `docs/README.md` and `tests/server/Root.spec.luau`.
 2. Turn the changelog's Unreleased section into the new version, with upgrade notes for any behaviour change.
 3. Run the whole suite in Studio, push, and wait for CI.
-4. Publish a GitHub release with the tag `vX.Y.Z`. The release workflow builds `Constella.rbxm` from that tag and attaches it.
+4. Publish a GitHub release with the tag `vX.Y.Z`. The release workflow checks that all three version numbers match the tag, builds `Constella.rbxm` from that tag and attaches it, then publishes to Wally and pesde when the `WALLY_TOKEN` and `PESDE_TOKEN` secrets are set.
+
+Every push also builds both packages and checks that each contains only the library (`.github/scripts/check_packages.py`). Wally ignores `include`, so `wally.toml` excludes everything else by name; if you add a top-level file, add it there too or that check fails.
 
 ## Pull requests
 
