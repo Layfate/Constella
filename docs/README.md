@@ -35,8 +35,8 @@ Reference pages for every module in Constella v0.2.0.
 
 - [Benchmarks](Benchmarks.md): measured results against sleitnick/signal, sleitnick/trove and plain Roblox approaches.
 - [Roadmap](Roadmap.md): what's done and what comes next.
-- [Changelog](../CHANGELOG.md)
-- [Contributing](../CONTRIBUTING.md): setup, tests and conventions.
+- [Changelog](https://github.com/Layfate/Constella/blob/main/CHANGELOG.md)
+- [Contributing](https://github.com/Layfate/Constella/blob/main/CONTRIBUTING.md): setup, tests and conventions.
 
 ## Known limitations
 

@@ -29,7 +29,7 @@ game:BindToClose(function() store:Shutdown(20) end)
 | What | Verified how | Status |
 | --- | --- | --- |
 | Constella's layer: migrations, reconciliation, lifecycle, session loss, shutdown budget | `MemoryAdapter`, which simulates session locking, throttling, failed saves, latency and several servers | ✅ Tested |
-| `ProfileStoreAdapter` with **real ProfileStore 1.0.3** | ProfileStore's own mock mode, which runs its real session, save and end-session code on an in-memory store ([`tests/server/ProfileStore.spec.luau`](../tests/server/ProfileStore.spec.luau)) | ✅ Tested |
+| `ProfileStoreAdapter` with **real ProfileStore 1.0.3** | ProfileStore's own mock mode, which runs its real session, save and end-session code on an in-memory store ([`tests/server/ProfileStore.spec.luau`](https://github.com/Layfate/Constella/blob/main/tests/server/ProfileStore.spec.luau)) | ✅ Tested |
 | `ProfileStoreAdapter` on **real DataStores**, one server | The `live DataStores` tests (save and reload, release, several players, cleanup of the test keys). They run on a Roblox server in every CI run, and in Play mode in Studio with API access | ✅ Tested |
 | Real DataStores with **several real players on one server** | Studio Server & Clients with 5 players: all 5 loaded, two left at the same moment, one left while the server shut down with two still active. Every value was saved and `Shutdown` returned `true` (2026-11-14) | ✅ Tested |
 | A player **moving to a second server** (two real Roblox servers at once) | In every CI run: server A loads the player and saves; server B loads the same player, sees A's data, and A gives up the session (kicking the player with ProfileStore's "loaded on another server" message) so it can't overwrite B. B's save is the one stored | ✅ Tested |
@@ -78,6 +78,33 @@ If *any* step fails, the session ends without the stored data being touched, the
 | A migration throws or returns a non-table | `MigrationFailed` | Untouched. Migrations run on a copy, so half-applied changes are thrown away |
 | The store is shutting down | `ShuttingDown` | — |
 
+## Changing data
+
+**Change data only with `profile:Set` and `profile:Update`.** Reading `profile.Data` directly is fine, but writing to it isn't:
+
+- A direct write skips the `Changed` signal, so anything listening (UI, replication) never hears about it.
+- A direct write skips the active-session check. After a session is lost, `Set` and `Update` raise an error, but a direct write just disappears with no error.
+
+`profile.Data` can't be frozen or wrapped, because it's the same table ProfileStore saves.
+
+**`Set` compares by identity.** If you edit a table in place and then `Set` that same table, nothing happens and `Changed` doesn't fire, because the value didn't change from `Set`'s point of view. Build a new table instead, which `Update` makes easy:
+
+```lua
+-- Wrong: edits the stored table in place; Set sees the same table and does nothing.
+local inventory = profile:Get("Inventory")
+table.insert(inventory, "Sword")
+profile:Set("Inventory", inventory)
+
+-- Right: Update with a copy; Changed fires with the new and old tables.
+profile:Update("Inventory", function(inventory)
+	local updated = table.clone(inventory)
+	table.insert(updated, "Sword")
+	return updated
+end)
+```
+
+The same rule applies to [State](State.md).
+
 ## Versions and migrations
 
 - Data is stamped with `_ConstellaVersion`, a reserved key you can't use in your Template.
@@ -108,7 +135,7 @@ When the backend ends a session (for example the player joined another server, w
 | `store:Shutdown(budget = 20)` | Stops new loads, releases everyone, and waits at most `budget` seconds, including for releases that were already saving (a player who left just before the server closed). Returns whether everything finished in time |
 | `store:GetStats()` | `{ Loaded, Loading, LoadsSucceeded, LoadsFailed, SessionsLost }` |
 | `store.Loaded(player, profile)` / `store.Released(player)` | Signals |
-| `profile.Data` | The live data table |
+| `profile.Data` | The live data table. Read it freely; change it only with `Set`/`Update` (see [Changing data](#changing-data)) |
 | `profile:Get(key)` / `:Set(key, value)` / `:Update(key, fn)` | `Set`/`Update` fire `profile.Changed(key, new, old)` |
 | `profile:Save()` | Saves now and yields until the save is written. Returns false (and reports the error) if it fails or times out |
 | `profile:IsActive()` / `profile:Release()` | |

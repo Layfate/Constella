@@ -10,7 +10,7 @@ Measured results, including where Constella loses. They come from one machine, s
 | Place | **A different Studio place from the previous run.** This run used a published test place with only Constella's scripts and the comparison libraries in it. The previous run (2026-11-13) used the unpublished dev place. |
 | Engine | Roblox Studio 0.747.0.7471481 (Edit mode, Windows), nothing else running |
 | Code | Constella 0.2.0, loaded from the release `Constella.rbxm`, with the Signal dispatch change described under [History](#history). The previous run measured the version before it. |
-| Tests | 238 of 238 unit tests passed in the same place, on the same package, before the benchmark run. |
+| Tests | The full suite has 242 tests. In this place, before the benchmark run, 238 passed and the 4 live DataStore tests were skipped, because the place had no DataStore access. All 242 pass in CI. |
 | Speed method | The whole suite ran **5 times**. In each run, a case runs once to warm up, then 5 timed trials with a yield between them; the run's result is the median of those trials. The table shows the **median across the 5 runs**, plus the best and worst run. Every run's result is listed under [All 5 runs](#all-5-runs). |
 | Memory method | Heap growth (`gcinfo`) while building 5,000 objects, repeated 21 times. Garbage collection during a build can only make a sample *smaller*, so the 80th percentile is reported; the upper samples are the uninterrupted ones. Repeated rounds gave identical results. |
 | Leak method | Objects go into a weak-keyed table and are released while their owner stays alive. The check then waits (creating throwaway garbage to keep the collector running) until the garbage collector has freed them. |
@@ -174,4 +174,4 @@ The latest change was measured as an A/B test in one session on 2026-11-14: each
 print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)({ Runs = 5 }))
 ```
 
-It takes about 30 seconds and prints Markdown tables like the ones above, including every run's result. The code is in [`benchmarks/`](../benchmarks).
+It takes about 30 seconds and prints Markdown tables like the ones above, including every run's result. The code is in [`benchmarks/`](https://github.com/Layfate/Constella/tree/main/benchmarks).
