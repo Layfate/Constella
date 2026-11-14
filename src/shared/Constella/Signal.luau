@@ -60,9 +60,10 @@ end
 --
 -- Fire only visits ids that existed when it started, which gives snapshot
 -- semantics without copying the list. A disconnected node keeps its next
--- pointer, so a Fire that is walking past it carries on. Its callback,
--- signal and previous pointer are cleared, so a Connection that is kept
--- after Disconnect doesn't keep the listener or the signal alive.
+-- pointer, so a Fire that is walking past it carries on. Its callback is
+-- cleared, so a Connection kept after Disconnect doesn't keep the listener
+-- alive. DisconnectAll (and Destroy) also clear every node's signal and
+-- previous pointer: then nothing in the chain references the signal.
 local CALLBACK, SIGNAL, PREVIOUS, NEXT, ID = 1, 2, 3, 4, 5
 
 -- Listeners run on recycled "runner" threads instead of a new coroutine
@@ -128,8 +129,6 @@ function ConnectionClass.Disconnect(self: any)
 	end
 	signal._count -= 1
 	self[CALLBACK] = false
-	self[SIGNAL] = false
-	self[PREVIOUS] = false
 end
 ConnectionClass.Destroy = ConnectionClass.Disconnect
 
