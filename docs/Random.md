@@ -96,7 +96,7 @@ Every function takes an optional `rng`. It can be a Roblox `Random` object, or a
 
 | Member | Description |
 | --- | --- |
-| `R.choose(entries, rng?, modifiers?)` | Returns a `Value`. O(n) |
+| `R.choose(entries, rng?, modifiers?)` | Returns a `Value`. Validates every entry on every call, about 100× slower than `lootTable:Roll`. Fine for occasional rolls; for anything rolled often, build a `R.lootTable` once and roll that |
 | `R.chooseIndex(weights, rng?)` | Returns an index into a plain array of weights |
 | `R.lootTable(entries)` | A validated, immutable table. Rolls without modifiers are O(log n) |
 | `loot:Roll(rng?, modifiers?)` | |

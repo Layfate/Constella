@@ -51,6 +51,15 @@ Other rules:
 - **Rate limiting is on by default** (30 requests per second per player, per endpoint). Pass `RateLimit = false` only for endpoints you rate-limit some other way.
 - **Leaving and rejoining:** per-player state is dropped on `PlayerRemoving`, so a player who rejoins starts with a fresh bucket and nothing leaks.
 
+### What the payload check protects (and what it doesn't)
+
+The size, depth and value-count check runs **after** Roblox has already received and decoded the request, because a remote's arguments only reach Luau once the engine has deserialized them. So the check:
+
+- **does protect your server's CPU time and logic:** an oversized or deeply nested request is rejected before validators, `Authorize` or your handler touch it, and it can't make them loop over huge tables;
+- **doesn't save bandwidth or decoding work:** the bytes have already crossed the network, and Roblox has already decoded them. Roblox's own remote limits and throttling cover that layer.
+
+The size is Constella's estimate of the decoded values, not the exact wire size (see [Known limitations](README.md)). If you need to shrink what's sent over the network, encode it yourself, for example into a `buffer`, or use a dedicated serializer such as Zap or Blink for that traffic. Constella's checks still apply to whatever reaches the handler.
+
 Validators are your code too (custom functions, `Check.refine` predicates). If one throws, the error goes to `OnError` as a server bug and the request is rejected as `InvalidArguments`. The client never sees the error text.
 
 Validation only checks that the *shape* of a request is acceptable. Your handler still decides whether it's *allowed* in the game (for example, whether the player can afford the item). Never accept prices, rewards or outcomes from the client.

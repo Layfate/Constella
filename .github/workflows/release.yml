@@ -33,14 +33,20 @@ jobs:
           chmod +x "$RUNNER_TEMP/bin/rojo"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
-      - name: Check the version matches the tag
+      - name: Check every version number matches the tag
         run: |
           tag="${{ github.event.release.tag_name }}"
-          version=$(sed -n 's/^local VERSION = "\(.*\)"$/\1/p' src/shared/Constella/init.luau)
-          if [ "v$version" != "$tag" ]; then
-            echo "::error::init.luau says $version but the release tag is $tag"
-            exit 1
-          fi
+          init=$(sed -n 's/^local VERSION = "\(.*\)"$/\1/p' src/shared/Constella/init.luau)
+          wally=$(sed -n 's/^version = "\(.*\)"$/\1/p' wally.toml)
+          pesde=$(sed -n 's/^version = "\(.*\)"$/\1/p' pesde.toml)
+          status=0
+          for pair in "init.luau=$init" "wally.toml=$wally" "pesde.toml=$pesde"; do
+            if [ "v${pair#*=}" != "$tag" ]; then
+              echo "::error::${pair%%=*} says '${pair#*=}' but the release tag is $tag"
+              status=1
+            fi
+          done
+          exit $status
 
       - name: Build
         run: |

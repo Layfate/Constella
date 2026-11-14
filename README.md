@@ -61,6 +61,23 @@ Also available as a ready-to-insert model file (**[download `Constella.rbxm`](ht
 | | [Zone](docs/Zone.md) | Enter/exit detection for players and parts |
 | | [Data](docs/Data.md) | Player profiles on ProfileStore *(server only)* |
 
+## Compared with other libraries
+
+Each module has a well-known alternative. Constella's case is that all 13 share one set of rules (strict types, explicit lifetimes, loud errors, no globals) and are tested together on real Roblox servers. If you only need one piece, the specialist library is often the right pick.
+
+| Job | Common choice | Constella | Main difference |
+| --- | --- | --- | --- |
+| **Secure remotes** | Plain RemoteEvents; Zap, ByteNet or Blink | [Network](docs/Network.md) | **Security first:** every client request is rate limited, size capped, schema checked and authorized before your handler runs, and clients only see generic error codes. Zap, ByteNet and Blink focus on compact serialization and bandwidth instead. The two approaches can be combined |
+| Player data | ProfileStore directly | [Data](docs/Data.md) | Built **on** ProfileStore: adds migrations, template reconciliation, `Changed` signals, kick-on-session-loss and a shutdown budget that waits for every save |
+| App structure | Knit | [Core](docs/Core.md) | Explicit apps instead of global singletons: dependency order, cycle and environment checks before any code runs, and rollback when startup fails |
+| Cleanup | Trove, Janitor, Maid | [Cleanup](docs/Cleanup.md) | About 9× faster than Trove for functions, with half the memory ([benchmarks](docs/Benchmarks.md)) |
+| Signals | GoodSignal, sleitnick/signal | [Signal](docs/Signal.md) | Catches each listener's errors and calls listeners in order. 5–9% slower than sleitnick/signal with the same error catching, and uses 9% less memory |
+| Promises | evaera/promise | [Promise](docs/Promise.md) | A smaller, strictly typed core: cancellation, timeouts, `all`/`race`/`allSettled`, retry with backoff. evaera/promise has a larger API and a long track record |
+| Reactive state | Fusion | [State](docs/State.md) | Small reactive values with property bindings, not a UI framework. For building whole interfaces declaratively, Fusion does far more |
+| Zones | ZonePlus | [Zone](docs/Zone.md) | Simple point tests against boxes and spheres, with hysteresis at the edges. ZonePlus supports more shapes and features |
+| Tagged components | sleitnick/component | [Component](docs/Component.md) | Each component gets its own Cleanup and an ancestor filter |
+| Object reuse | PartCache | [Pool](docs/Pool.md) | Pools any object, not only Parts, with limits on idle and active counts |
+
 ## Quick start
 
 Utilities work on their own, with no setup:
