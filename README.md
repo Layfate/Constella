@@ -32,7 +32,7 @@
 Constella = "zense/constella@0.3.0"
 ```
 
-Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
+Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). Wally and pesde start with 0.3.0; see [Installation](#installation).
 
 - **Use only what you need.** Every module loads on first use. `require(Constella.Signal)` loads Signal and nothing else, and no system starts unless you start it.
 - **Safe networking by default.** Every client request passes rate limiting, payload caps, schema validation and your authorization check before your code runs. Clients only ever see generic error codes; the details stay on the server.
@@ -181,6 +181,8 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 ## Installation
 
 **Download (easiest).** Get `Constella.rbxm` from the [latest release](https://github.com/Layfate/Constella/releases/latest). In Studio, right-click `ReplicatedStorage` → **Insert from File…** and choose the file. Then move the inserted `Constella` module into a Folder named `Packages`, so the path is `ReplicatedStorage.Packages.Constella`.
+
+> **Wally and pesde:** Constella is published to both registries starting with 0.3.0. Until that release is out, use the download above or the model file below.
 
 **Wally.** Add Constella to `wally.toml`, then run `wally install`:
 

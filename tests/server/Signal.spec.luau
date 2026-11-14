@@ -239,7 +239,12 @@ return function(t, Constella)
 			local kept
 			isolated(function()
 				signal:Connect(function() end)
-				local listener = function() end
+				-- Captures a fresh table: Luau reuses closures that capture
+				-- nothing, and those are never collected.
+				local token = {}
+				local listener = function()
+					return token
+				end
 				weak[listener] = true
 				kept = signal:Connect(listener)
 				signal:Connect(function() end)

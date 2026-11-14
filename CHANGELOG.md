@@ -2,9 +2,23 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
-## Unreleased
+## Unreleased (0.3.0)
+
+Typed public API, Data out of beta, fixes for cancelled waiting threads and for references kept longer than needed, and fewer allocations on hot paths. No modules or public functions were removed, and no behaviour changed except as listed under Fixed.
+
+### Fixed
+- **Promise, Signal, Core, Network, Data:** a waiting thread that was cancelled in the meantime (with `task.cancel`, for example by a `Cleanup`) was still resumed, which raises. Resolving a promise could then throw and skip the remaining `Await` callers. `App:Start()` could raise after `Started` had fired and leave other `AwaitStart` callers waiting forever. `Signal:Wait` reported an error, and the Network client and the ProfileStore save waiter logged one. Cancelled waiters are now skipped.
+- **Data:** the store kept a reference to every player who was released while their profile was still loading (a player who left mid-load), for the life of the server.
+- **Promise:** a settled promise kept the promises it was chained from, and their values, alive for as long as it was referenced, and kept its cancel hooks too. Both are released when it settles. A cancel hook registered after the promise settled is no longer stored (it could never run).
+- **Signal:** a `Connection` kept after `Disconnect`, `DisconnectAll` or `Destroy` (for example in a field) kept its listener, and often the whole signal, alive. Disconnecting now releases them.
+- **Packaging:** the Wally package would have contained the whole repository, including build output and a downloaded copy of ProfileStore, because Wally 0.3.2 ignores `include`. `wally.toml` now excludes everything but the library, and pesde no longer ships a hand-written `default.project.json` (pesde generates it on install).
 
 ### Changed
+- **Performance:** fewer allocations on hot paths, with identical results. See [Benchmarks](docs/Benchmarks.md) for measurements.
+  - `Random.choose` and `Random.chooseIndex` no longer build an error label for every entry on every call, and allocate nothing without modifiers. They pick exactly the entry `lootTable:Roll` picks for the same roll (a new test checks 3,000 rolls).
+  - `Promise` creates its internal lists only when needed, instead of three tables per promise.
+  - `State` `Set` allocates nothing (internal buffers are reused). Computed states with 1–3 sources no longer build an array on every recompute.
+  - `Cleanup` no longer creates a closure for every table resource it adds, `Network` no longer creates one to measure every request's payload, `Replication` builds its size limits once instead of on every update, and `Zone` no longer allocates on steps where nothing entered or left.
 - **Types:** the public API is properly typed.
   - `Promise<T>` is generic in its value type; `Promise.resolve`, `Promise.delay`, `:Finally`, `:Timeout` and `:Expect` keep the type. `:Then`/`:Catch` return the new `AnyPromise` type.
   - `Data.Store.new` takes `T` from `Template`: `Store<T>`, `Profile<T>` with a typed `Data`, and `LoadAsync` returns `Promise<Profile<T>>`.
@@ -12,23 +26,20 @@ All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.
   - Every exported class type gives its methods a real `self` type (122 signatures) instead of `self: any`.
   - Existing annotations keep working: `Promise`, `Store` and `Profile` without type arguments mean the old untyped versions.
 - **Data is no longer beta.** Everything that can be checked before a live game has now been verified on real DataStores on real Roblox servers (see [docs/Data.md](docs/Data.md#status-and-verification)). The API is unchanged.
-
-### Fixed
-- **Packaging:** the Wally package would have contained the whole repository, including build output and a downloaded copy of ProfileStore, because Wally 0.3.2 ignores `include`. `wally.toml` now excludes everything but the library, and pesde no longer ships a hand-written `default.project.json` (pesde generates it on install).
+- **Tests:** the Network integration test counts accepted and rejected requests per player, so it also passes with several clients (Studio Server & Clients mode), where each player has its own rate limit.
 
 ### Added
+- **Tests:** a regression test for each fix above. TestKit gains `t.collected(weakTable)`, which waits for the garbage collector to free objects.
+- **Benchmarks:** Promise and computed-State cases, memory per promise, and leak checks for kept connections and kept promise chains. The suite can measure several builds of the package in one session, alternating case by case. On pull requests, CI runs it on a Roblox server against the base commit and adds the report to the job summary.
 - **Packaging:** every push builds the Wally and pesde packages and checks that each contains exactly the library. Releases publish to both registries when their tokens are set, and fail if `init.luau`, `wally.toml` and `pesde.toml` disagree with the tag.
 - **Docs site:** https://layfate.github.io/Constella/ (GitHub Pages from `docs/`).
 - **CI:** two live Data scenarios run on real Roblox servers on every push ([`tests/server/Live.luau`](tests/server/Live.luau)). A player moves to a second server: server B sees server A's data, A gives up the session and kicks the player, and B's save is the one stored. And 15 sessions load and save at once on one server.
 - **Docs:** [Data](docs/Data.md) explains ProfileStore's MessagingService subscription limit for servers that keep many profiles open with few players.
-- **CI:** the whole test suite runs on a real Roblox server on every push, through Open Cloud: the CI place is built from `ci.project.json` with a pinned ProfileStore, published to a dedicated CI experience, and run with the Luau execution API. 242 tests pass there, including the live DataStore tests.
-
-### Changed
-- **Tests:** the Network integration test counts accepted and rejected requests per player, so it also passes with several clients (Studio Server & Clients mode), where each player has its own rate limit.
+- **CI:** the whole test suite runs on a real Roblox server on every push, through Open Cloud: the CI place is built from `ci.project.json` with a pinned ProfileStore, published to a dedicated CI experience, and run with the Luau execution API, including the live DataStore tests.
 
 ### Verified
 - **Multiplayer:** in Studio Server & Clients mode with 5 players, Network passed for every player, Replication passed on every client, and Data on real DataStores saved every value when two players left at once and when one left during shutdown.
-- **Data:** the live DataStore tests pass on real DataStores through ProfileStore 1.0.3, in Studio Play mode and on a Roblox server in CI. Testing with players moving between live servers is still open, so Data stays beta.
+- **Data:** the live DataStore tests pass on real DataStores through ProfileStore 1.0.3, in Studio Play mode and on a Roblox server in CI, and so do players moving between live servers (see the CI entry above).
 
 ## 0.2.0 — 2026-11-14
 

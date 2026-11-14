@@ -16,6 +16,8 @@ connection:Disconnect()
 - Each listener starts immediately on its own thread (`task.spawn`), so one that yields doesn't block the others.
 - A listener error never stops the other listeners and never propagates out of `Fire`. It goes to `OnError`, or if none is set, it's raised on a separate thread so it still appears in the output with a traceback.
 - `Once` disconnects before it runs, so firing the signal again from inside the listener doesn't re-enter it.
+- A thread blocked in `Wait` that is cancelled in the meantime is skipped, without an error.
+- **Memory.** A disconnected `Connection` no longer references its listener or its signal. Keeping one around (in a field, say) doesn't keep either alive.
 
 ## API
 

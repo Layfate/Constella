@@ -18,6 +18,8 @@ Promise.retry(fetchLeaderboard, { Attempts = 3, Delay = 0.5 })
 - **No silent failures.** A rejection that nothing handles (no `Then`/`Catch`/`Finally`/`Await`) by the next resumption point is reported as an error in the output.
 - **Cancellation.** `Cancel()` settles a pending promise as `"Cancelled"`, runs its `onCancel` hooks and cancels everything chained from it. A chained promise that's cancelled also cancels its parent once the parent has no other consumers, so cancelling the end of a chain stops the work behind it.
 - `all` and `race` cancel the losing promises *before* they settle. Anyone who resumes from `Await` therefore sees the losers already stopped.
+- A thread blocked in `Await` that is cancelled (for example by a `Cleanup` it was added to) is simply skipped when the promise settles. The other waiters still resume.
+- **Memory.** Once a promise settles it lets go of the promises it was chained from and of its `onCancel` hooks, so keeping the end of a chain doesn't keep the earlier values alive. A hook registered after the promise settled is never stored, because it can never run.
 
 ## Types
 

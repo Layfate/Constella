@@ -26,11 +26,18 @@ This stage proved that what exists works well. No new modules were added.
 - **Random:** ✅ chi-squared tests for the weights, the Luck formula and shuffle; a [server-authoritative reward pattern](Random.md#server-authoritative-rewards) is documented.
 - **Reviews:** ✅ three rounds of review fixes, including a Data shutdown race and runaway `Start` threads; every fix has a regression test (see the [changelog](https://github.com/Layfate/Constella/blob/main/CHANGELOG.md)).
 
-## Next (toward 0.3.0)
+## v0.3.0 — types, Data out of beta, hardening
 
-Still verification work. No new modules are planned.
+Still verification work. No new modules.
 
 - **Data:** ✅ out of beta. Every CI run tests it on real DataStores on real Roblox servers: a player moving to a second server (two servers at once), many sessions at once, and the live DataStore tests. Studio Server & Clients with 5 players covered players leaving together and during shutdown. Still to observe: a live game under heavy load over time.
+- **Types:** ✅ typed public API (`Promise<T>`, `Store<T>`/`Profile<T>`, real `self` types).
+- **Hardening:** ✅ cancelled waiting threads are skipped everywhere, and settled promises, disconnected connections and players who left mid-load no longer stay referenced. Each fix has a regression test.
+- **Performance:** ✅ fewer allocations in Random, Promise, State, Cleanup, Network, Replication and Zone, measured A/B against 0.2.0 on a Roblox server (see [Benchmarks](Benchmarks.md)).
+- **Packaging:** ✅ Wally and pesde packages checked in CI; publishing to the registries happens with the 0.3.0 release.
+
+## Next
+
 - **Pool:** measure memory over long sessions.
 
 ## Toward 1.0

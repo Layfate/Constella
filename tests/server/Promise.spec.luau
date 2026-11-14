@@ -315,7 +315,12 @@ return function(t, Constella)
 			local weak = setmetatable({}, { __mode = "k" })
 			local promise, lateHookRan, lateResult
 			task.spawn(function()
-				local hook = function() end
+				-- Captures a fresh table: Luau reuses closures that capture
+				-- nothing, and those are never collected.
+				local token = {}
+				local hook = function()
+					return token
+				end
 				weak[hook] = true
 				promise = Promise.new(function(resolve, _, onCancel)
 					onCancel(hook)
