@@ -36,9 +36,17 @@ Still verification work. No new modules.
 - **Performance:** ✅ fewer allocations in Random, Promise, State, Cleanup, Network, Replication and Zone, measured A/B against 0.2.0 on a Roblox server (see [Benchmarks](Benchmarks.md)).
 - **Packaging:** ✅ Wally and pesde packages checked in CI; publishing to the registries is the next step.
 
+## After v0.3.0 (version number unchanged)
+
+- **Promise:** ✅ executors and handlers on recycled threads: about 2× faster and up to 56% less memory per promise.
+- **Replication:** ✅ one validation walk (full sends a third faster) and the opt-in **Delta** mode (95% fewer bytes for small changes to big tables).
+- **Zone, Network, Signal:** ✅ fewer allocations and checks per step, request and connection.
+- **Benchmarks:** ✅ every module, a 50-player tick, LemonSignal/Janitor/evaera Promise as competitors, confidence intervals, and a CI gate that fails a pull request with a regression.
+
 ## Next
 
 - **Pool:** measure memory over long sessions.
+- **Replication Delta:** run the Play-mode test (`tests/client/ReplicationIntegration.client.luau`) in Studio with real clients.
 
 ## Toward 1.0
 

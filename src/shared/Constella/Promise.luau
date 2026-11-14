@@ -5,9 +5,11 @@
 	Asynchronous values with chaining, cancellation and timeouts.
 
 	Semantics
-	- The executor runs immediately on its own thread and may yield.
-	- Handlers run on their own threads, in the order they were attached.
-	  Attaching to an already-settled promise runs the handler right away.
+	- The executor runs immediately on a thread of its own (a recycled one,
+	  like Signal's listeners) and may yield.
+	- Handlers run the same way, in the order they were attached; one that
+	  yields never delays the others. Attaching to an already-settled
+	  promise runs the handler right away.
 	- An error thrown in an executor or handler rejects with a PromiseError
 	  (Kind "ExecutionError") that carries the message and a traceback.
 	  Tables thrown with error() are passed through unchanged.
@@ -115,36 +117,113 @@ local unhandledHandler: (any) -> () = defaultUnhandled
 local PromiseClass = {}
 PromiseClass.__index = PromiseClass
 
+-- A promise keeps its state in the table's array part, which Luau stores
+-- compactly (16 bytes a slot); methods come from the metatable.
+--   STATUS     "Pending" | "Resolved" | "Rejected" | "Cancelled"
+--   VALUES     table.pack of the outcome, once settled
+--   QUEUE      what to notify on settle: one entry, or a plain list of them
+--   HOOKS      onCancel hooks (a list)
+--   UPSTREAM   the promise(s) this one was chained from: one, or a list
+--   CONSUMERS  how many promises are chained from this one
+--   HANDLED    true once something handles a rejection
+--   MODE, ON_RESOLVED, ON_REJECTED
+--              for a promise made by Then or Finally: how to react when its
+--              parent settles, and the handlers (cleared once used)
+-- QUEUE, HOOKS and UPSTREAM are dropped on settle: Cancel does nothing
+-- afterwards, so a settled promise doesn't keep the promises it was chained
+-- from, or its cancel hooks, alive.
+local STATUS, VALUES, QUEUE, HOOKS, UPSTREAM, CONSUMERS, HANDLED = 1, 2, 3, 4, 5, 6, 7
+local MODE, ON_RESOLVED, ON_REJECTED = 8, 9, 10
+local THEN, FINALLY = 1, 2
+
 local function isPromise(value: any): boolean
 	return type(value) == "table" and getmetatable(value) == PromiseClass
 end
 
--- Bookkeeping lists (_queue, _cancelHooks, _upstream) are created on first
--- use, since most promises never need some of them, and dropped when the
--- promise settles. So a settled promise doesn't keep the promises it was
--- chained from, or its cancel hooks, alive.
-local function create(): any
-	return setmetatable({
-		_status = "Pending",
-		_values = nil,
-		_queue = nil,
-		_cancelHooks = nil,
-		_upstream = nil,
-		_consumers = 0,
-		_handled = false,
-	}, PromiseClass)
+-- A plain list (as opposed to a single entry, which is a function, a
+-- thread or a promise).
+local function isList(value: any): boolean
+	return type(value) == "table" and getmetatable(value) == nil
 end
 
-local function subscribe(promise: any, callback: () -> ())
-	if promise._status == "Pending" then
-		local queue = promise._queue
-		if queue then
-			table.insert(queue, callback)
-		else
-			promise._queue = { callback }
-		end
+local function create(): any
+	return setmetatable({ "Pending", nil, nil, nil, nil, 0, false, nil, nil, nil } :: { any }, PromiseClass)
+end
+
+-- Runner threads -------------------------------------------------------------
+-- Executors and handlers run on recycled "runner" threads instead of a new
+-- coroutine each, the same way Signal runs listeners. A runner marks itself
+-- busy while its job runs; if the job yields, the next job gets a fresh
+-- runner, so a yielding handler never blocks the others. Jobs catch user
+-- errors themselves, so a runner never dies from one.
+--
+-- Like any thread reuse, the values of the most recent job can stay
+-- reachable in an idle runner's unused stack slots until it runs the next
+-- job. That is bounded to one job, not a leak. The job comes first in the
+-- argument list, then the user's function, then the promise and values.
+local freeRunner: thread? = nil
+
+local function runJob(job: (...any) -> (), ...: any)
+	local runner = freeRunner
+	freeRunner = nil
+	job(...)
+	freeRunner = runner
+end
+
+-- Starts by yielding, so a runner never keeps its first job's arguments
+-- alive on its stack frame.
+local function runnerLoop()
+	while true do
+		runJob(coroutine.yield())
+	end
+end
+
+local function spawnJob(job: (...any) -> (), ...: any)
+	local runner = freeRunner
+	-- A runner is only reused while it's parked. (User code could have
+	-- cancelled it, for example by adding coroutine.running() to a Cleanup.)
+	if runner == nil or coroutine.status(runner :: thread) ~= "suspended" then
+		local fresh = coroutine.create(runnerLoop)
+		coroutine.resume(fresh) -- run to the first yield
+		freeRunner = fresh
+		runner = fresh
+	end
+	task.spawn(runner :: thread, job, ...)
+end
+
+-- Settling ---------------------------------------------------------------------
+
+local settle: (self: any, status: Status, values: any) -> ()
+local resolveWith: (self: any, ...any) -> ()
+local cancel: (self: any) -> ()
+
+local function finishHandler(child: any, ok: boolean, ...: any)
+	if ok then
+		resolveWith(child, ...)
 	else
-		callback()
+		settle(child, "Rejected", table.pack((...)))
+	end
+end
+
+local function handlerJob(handler: (...any) -> ...any, child: any, values: any)
+	finishHandler(child, xpcall(handler, captureError, table.unpack(values, 1, values.n)))
+end
+
+local function finallyJob(callback: (Status) -> (), child: any, status: Status, values: any)
+	local ok, err = xpcall(callback :: any, captureError, status)
+	if not ok then
+		settle(child, "Rejected", table.pack(err))
+	elseif status == "Cancelled" then
+		cancel(child)
+	else
+		settle(child, status, values)
+	end
+end
+
+local function executorJob(executor: any, self: any, resolve: any, reject: any, onCancel: any)
+	local ok, err = xpcall(executor, captureError, resolve, reject, onCancel)
+	if not ok then
+		settle(self, "Rejected", table.pack(err))
 	end
 end
 
@@ -157,45 +236,102 @@ local function resumeWaiter(thread: thread)
 	end
 end
 
-local function settle(self: any, status: Status, values: any)
-	if self._status ~= "Pending" then
-		return
-	end
-	self._status = status
-	self._values = values
-	-- Cancel does nothing once settled, so the cancel hooks and upstream
-	-- links are never used again.
-	local queue = self._queue
-	self._queue = nil
-	self._cancelHooks = nil
-	self._upstream = nil
-	if queue then
-		for _, callback in queue do
-			callback()
+-- Tells one queue entry that `promise` has settled. An entry is a thread
+-- (Await), a function (adoption and the combinators) or a promise made by
+-- Then/Finally on `promise`.
+local function notify(promise: any, entry: any)
+	local kind = type(entry)
+	if kind == "thread" then
+		resumeWaiter(entry)
+	elseif kind == "function" then
+		entry()
+	elseif entry[MODE] == FINALLY then
+		local callback = entry[ON_RESOLVED]
+		entry[ON_RESOLVED] = nil
+		spawnJob(finallyJob, callback, entry, promise[STATUS], promise[VALUES])
+	else
+		local status = promise[STATUS]
+		local handler = if status == "Resolved"
+			then entry[ON_RESOLVED]
+			elseif status == "Rejected" then entry[ON_REJECTED]
+			else nil
+		entry[ON_RESOLVED] = nil
+		entry[ON_REJECTED] = nil
+		if status == "Cancelled" then
+			cancel(entry)
+		elseif handler then
+			spawnJob(handlerJob, handler, entry, promise[VALUES])
+		else
+			settle(entry, status, promise[VALUES])
 		end
 	end
+end
+
+local function notifyAll(promise: any, queue: any)
+	if queue == nil then
+		return
+	end
+	if isList(queue) then
+		for _, entry in queue do
+			notify(promise, entry)
+		end
+	else
+		notify(promise, queue)
+	end
+end
+
+local function subscribe(promise: any, entry: any)
+	if promise[STATUS] ~= "Pending" then
+		notify(promise, entry)
+		return
+	end
+	local queue = promise[QUEUE]
+	if queue == nil then
+		promise[QUEUE] = entry
+	elseif isList(queue) then
+		table.insert(queue, entry)
+	else
+		promise[QUEUE] = { queue, entry }
+	end
+end
+
+local function reportIfUnhandled(self: any)
+	if not self[HANDLED] then
+		unhandledHandler(self[VALUES][1])
+	end
+end
+
+function settle(self: any, status: Status, values: any)
+	if self[STATUS] ~= "Pending" then
+		return
+	end
+	self[STATUS] = status
+	self[VALUES] = values
+	local queue = self[QUEUE]
+	self[QUEUE] = nil
+	self[HOOKS] = nil
+	self[UPSTREAM] = nil
+	notifyAll(self, queue)
 	if status == "Rejected" then
-		task.defer(function()
-			if not self._handled then
-				unhandledHandler(self._values[1])
-			end
-		end)
+		task.defer(reportIfUnhandled, self)
 	end
 end
 
 local function addUpstream(self: any, upstream: any)
-	upstream._consumers += 1
-	upstream._handled = true
-	local list = self._upstream
-	if list then
-		table.insert(list, upstream)
+	upstream[CONSUMERS] += 1
+	upstream[HANDLED] = true
+	local current = self[UPSTREAM]
+	if current == nil then
+		self[UPSTREAM] = upstream
+	elseif isList(current) then
+		table.insert(current, upstream)
 	else
-		self._upstream = { upstream }
+		self[UPSTREAM] = { current, upstream }
 	end
 end
 
-local function resolveWith(self: any, ...: any)
-	if self._status ~= "Pending" then
+function resolveWith(self: any, ...: any)
+	if self[STATUS] ~= "Pending" then
 		return
 	end
 	local first = ...
@@ -206,11 +342,11 @@ local function resolveWith(self: any, ...: any)
 		end
 		addUpstream(self, first)
 		subscribe(first, function()
-			local status = first._status
+			local status = first[STATUS]
 			if status == "Cancelled" then
-				self:Cancel()
+				cancel(self)
 			else
-				settle(self, status, first._values)
+				settle(self, status, first[VALUES])
 			end
 		end)
 		return
@@ -218,16 +354,44 @@ local function resolveWith(self: any, ...: any)
 	settle(self, "Resolved", table.pack(...))
 end
 
-local function runHandler(child: any, handler: (...any) -> ...any, values: any)
-	task.spawn(function()
-		local results = table.pack(xpcall(handler, captureError, table.unpack(values, 1, values.n)))
-		if results[1] then
-			resolveWith(child, table.unpack(results, 2, results.n))
-		else
-			settle(child, "Rejected", table.pack(results[2]))
-		end
-	end)
+local function releaseUpstream(upstream: any)
+	upstream[CONSUMERS] -= 1
+	if upstream[CONSUMERS] <= 0 then
+		cancel(upstream)
+	end
 end
+
+function cancel(self: any)
+	if self[STATUS] ~= "Pending" then
+		return
+	end
+	self[STATUS] = "Cancelled"
+	self[VALUES] = table.pack(newError("Cancelled", "The promise was cancelled"))
+	local hooks, queue, upstream = self[HOOKS], self[QUEUE], self[UPSTREAM]
+	self[HOOKS] = nil
+	self[QUEUE] = nil
+	self[UPSTREAM] = nil
+	if hooks then
+		for _, hook in hooks do
+			local ok, err = pcall(hook)
+			if not ok then
+				task.spawn(error, PREFIX .. "onCancel hook failed: " .. tostring(err), 0)
+			end
+		end
+	end
+	notifyAll(self, queue)
+	if upstream ~= nil then
+		if isList(upstream) then
+			for _, item in upstream do
+				releaseUpstream(item)
+			end
+		else
+			releaseUpstream(upstream)
+		end
+	end
+end
+
+-- Methods ------------------------------------------------------------------------
 
 local function checkHandler(handler: any, name: string)
 	if handler ~= nil and type(handler) ~= "function" then
@@ -239,26 +403,11 @@ function PromiseClass.Then(self: any, onResolved: ((...any) -> ...any)?, onRejec
 	checkHandler(onResolved, "onResolved")
 	checkHandler(onRejected, "onRejected")
 	local child = create()
+	child[MODE] = THEN
+	child[ON_RESOLVED] = onResolved
+	child[ON_REJECTED] = onRejected
 	addUpstream(child, self)
-	subscribe(self, function()
-		local status = self._status
-		local values = self._values
-		if status == "Resolved" then
-			if onResolved then
-				runHandler(child, onResolved, values)
-			else
-				settle(child, "Resolved", values)
-			end
-		elseif status == "Rejected" then
-			if onRejected then
-				runHandler(child, onRejected, values)
-			else
-				settle(child, "Rejected", values)
-			end
-		else
-			child:Cancel()
-		end
-	end)
+	subscribe(self, child)
 	return child
 end
 
@@ -276,36 +425,23 @@ function PromiseClass.Finally(self: any, callback: (Status) -> ()): any
 		error(PREFIX .. ("Finally expects a function, got %s"):format(typeof(callback)), 2)
 	end
 	local child = create()
+	child[MODE] = FINALLY
+	child[ON_RESOLVED] = callback
 	addUpstream(child, self)
-	subscribe(self, function()
-		local status, values = self._status, self._values
-		task.spawn(function()
-			local ok, err = xpcall(callback :: any, captureError, status)
-			if not ok then
-				settle(child, "Rejected", table.pack(err))
-			elseif status == "Cancelled" then
-				child:Cancel()
-			else
-				settle(child, status, values)
-			end
-		end)
-	end)
+	subscribe(self, child)
 	return child
 end
 
 --- Yields until settled. Returns (true, ...values) when resolved, otherwise
 --- (false, rejection) - a PromiseError of Kind "Cancelled" if cancelled.
 function PromiseClass.Await(self: any): (boolean, ...any)
-	self._handled = true
-	if self._status == "Pending" then
-		local thread = coroutine.running()
-		subscribe(self, function()
-			resumeWaiter(thread)
-		end)
+	self[HANDLED] = true
+	if self[STATUS] == "Pending" then
+		subscribe(self, coroutine.running())
 		coroutine.yield()
 	end
-	local values = self._values
-	if self._status == "Resolved" then
+	local values = self[VALUES]
+	if self[STATUS] == "Resolved" then
 		return true, table.unpack(values, 1, values.n)
 	end
 	return false, table.unpack(values, 1, values.n)
@@ -321,41 +457,10 @@ function PromiseClass.Expect(self: any): ...any
 	return table.unpack(results, 2, results.n)
 end
 
-function PromiseClass.Cancel(self: any)
-	if self._status ~= "Pending" then
-		return
-	end
-	self._status = "Cancelled"
-	self._values = table.pack(newError("Cancelled", "The promise was cancelled"))
-	local hooks, queue, upstreams = self._cancelHooks, self._queue, self._upstream
-	self._cancelHooks = nil
-	self._queue = nil
-	self._upstream = nil
-	if hooks then
-		for _, hook in hooks do
-			local ok, err = pcall(hook)
-			if not ok then
-				task.spawn(error, PREFIX .. "onCancel hook failed: " .. tostring(err), 0)
-			end
-		end
-	end
-	if queue then
-		for _, callback in queue do
-			callback()
-		end
-	end
-	if upstreams then
-		for _, upstream in upstreams do
-			upstream._consumers -= 1
-			if upstream._consumers <= 0 then
-				upstream:Cancel()
-			end
-		end
-	end
-end
+PromiseClass.Cancel = cancel
 
 function PromiseClass.GetStatus(self: any): Status
-	return self._status
+	return self[STATUS]
 end
 
 local Promise = {}
@@ -380,12 +485,12 @@ function Promise.new(executor: (
 	end
 	local function onCancel(hook: (() -> ())?): boolean
 		if hook == nil then
-			return self._status == "Cancelled"
+			return self[STATUS] == "Cancelled"
 		end
 		if type(hook) ~= "function" then
 			error(PREFIX .. "onCancel expects a function", 2)
 		end
-		local status = self._status
+		local status = self[STATUS]
 		if status == "Cancelled" then
 			hook()
 			return true
@@ -394,20 +499,15 @@ function Promise.new(executor: (
 			-- Settled: the hook can never run, so don't keep it.
 			return false
 		end
-		local hooks = self._cancelHooks
+		local hooks = self[HOOKS]
 		if hooks then
 			table.insert(hooks, hook)
 		else
-			self._cancelHooks = { hook }
+			self[HOOKS] = { hook }
 		end
 		return false
 	end
-	task.spawn(function()
-		local ok, err = xpcall(executor :: any, captureError, resolve, reject, onCancel)
-		if not ok then
-			settle(self, "Rejected", table.pack(err))
-		end
-	end)
+	spawnJob(executorJob, executor, self, resolve, reject, onCancel)
 	return self
 end
 
@@ -482,14 +582,14 @@ function Promise.all(promises: { Promise | AnyPromise }): Promise<{ any }>
 		end
 		onCancel(cancelRest)
 		for index, promise in list do
-			(promise :: any)._handled = true
+			(promise :: any)[HANDLED] = true
 			subscribe(promise, function()
 				if finished then
 					return
 				end
 				local p = promise :: any
-				if p._status == "Resolved" then
-					results[index] = p._values[1]
+				if p[STATUS] == "Resolved" then
+					results[index] = p[VALUES][1]
 					remaining -= 1
 					if remaining == 0 then
 						finished = true
@@ -500,7 +600,7 @@ function Promise.all(promises: { Promise | AnyPromise }): Promise<{ any }>
 					-- Cancel the others first so they are stopped by the time
 					-- anyone awaiting this promise resumes.
 					cancelRest()
-					reject(table.unpack(p._values, 1, p._values.n))
+					reject(table.unpack(p[VALUES], 1, p[VALUES].n))
 				end
 			end)
 		end
@@ -521,10 +621,10 @@ function Promise.allSettled(promises: { Promise | AnyPromise }): Promise<{ { Sta
 			return
 		end
 		for index, promise in list do
-			(promise :: any)._handled = true
+			(promise :: any)[HANDLED] = true
 			subscribe(promise, function()
 				local p = promise :: any
-				results[index] = { Status = p._status, Value = p._values[1] }
+				results[index] = { Status = p[STATUS], Value = p[VALUES][1] }
 				remaining -= 1
 				if remaining == 0 then
 					resolve(results)
@@ -552,26 +652,26 @@ function Promise.race(promises: { Promise | AnyPromise }): Promise
 		end
 		onCancel(cancelRest)
 		for _, promise in list do
-			(promise :: any)._handled = true
+			(promise :: any)[HANDLED] = true
 			subscribe(promise, function()
 				if finished then
 					return
 				end
 				local p = promise :: any
-				if p._status == "Cancelled" then
+				if p[STATUS] == "Cancelled" then
 					cancelled += 1
 					if cancelled == #list then
 						finished = true
-						reject(table.unpack(p._values, 1, p._values.n))
+						reject(table.unpack(p[VALUES], 1, p[VALUES].n))
 					end
 					return
 				end
 				finished = true
 				cancelRest()
-				if p._status == "Resolved" then
-					resolve(table.unpack(p._values, 1, p._values.n))
+				if p[STATUS] == "Resolved" then
+					resolve(table.unpack(p[VALUES], 1, p[VALUES].n))
 				else
-					reject(table.unpack(p._values, 1, p._values.n))
+					reject(table.unpack(p[VALUES], 1, p[VALUES].n))
 				end
 			end)
 		end

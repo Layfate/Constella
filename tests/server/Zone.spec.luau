@@ -159,6 +159,63 @@ return function(t, Constella)
 			expect(#errors).toBe(1)
 			zone:Destroy()
 		end)
+
+		t.it("keeps working when OnError raises or a callback steps the zone again", function()
+			local raise = true
+			local zone = Zone.new({ CFrame = CFrame.new(), Size = Vector3.new(10, 10, 10) }, {
+				AutoUpdate = false,
+				OnError = function()
+					if raise then
+						error("handler failed")
+					end
+				end,
+			})
+			local a, getA = point(Vector3.zero)
+			zone:Track(a, getA)
+			zone:Track("broken", function()
+				error("no position")
+			end)
+			expect(function()
+				zone:Step()
+			end).toThrow("handler failed")
+			expect(zone:IsInside(a)).toBe(true)
+			raise = false
+
+			-- A callback that steps the zone again must not disturb the step
+			-- in progress.
+			local nested = 0
+			local b = { Position = Vector3.new(1, 0, 0) }
+			zone:Track(b, function()
+				nested += 1
+				if nested == 1 then
+					zone:Step()
+				end
+				return b.Position
+			end)
+			zone:Step()
+			expect(zone:IsInside(b)).toBe(true)
+			a.Position = Vector3.new(100, 0, 0)
+			zone:Step()
+			expect(zone:IsInside(a)).toBe(false)
+			zone:Destroy()
+		end)
+
+		t.it("does not keep untracked items alive", function()
+			local zone = box()
+			local weak = setmetatable({}, { __mode = "k" })
+			task.spawn(function()
+				local item = { Position = Vector3.zero }
+				weak[item] = true
+				zone:Track(item, function()
+					return item.Position
+				end)
+				zone:Step()
+				zone:Untrack(item)
+			end)
+			zone:Step()
+			expect(t.collected(weak)).toBe(true)
+			zone:Destroy()
+		end)
 	end)
 
 	t.describe("instances", function()

@@ -272,6 +272,13 @@ return function(t, Constella)
 	end)
 
 	t.describe("waiting threads and memory", function()
+		-- Executors and handlers run on recycled threads. An idle one can
+		-- hold its last job's values in unused stack slots until it runs the
+		-- next job (bounded, not a leak), so memory checks run one more job.
+		local function flushRunner()
+			Promise.resolve(nil):Then(function() end)
+		end
+
 		t.it("skips an awaiting thread that was cancelled and still resumes the others", function()
 			local resolvePromise
 			local promise = Promise.new(function(resolve)
@@ -307,6 +314,7 @@ return function(t, Constella)
 				end)
 			end)
 			expect(child:GetStatus()).toBe("Resolved")
+			flushRunner()
 			expect(t.collected(weak)).toBe(true)
 			expect(child:Expect()).toBe(1)
 		end)
@@ -338,8 +346,56 @@ return function(t, Constella)
 			end)
 			expect(promise:GetStatus()).toBe("Resolved")
 			expect(lateResult).toBe(false)
+			flushRunner()
 			expect(t.collected(weak)).toBe(true)
 			expect(lateHookRan).toBeNil()
+		end)
+	end)
+
+	t.describe("recycled threads", function()
+		t.it("a handler that yields doesn't delay the next one", function()
+			local order = {}
+			local root = Promise.resolve(1)
+			local slow = root:Then(function()
+				task.wait()
+				table.insert(order, "slow")
+			end)
+			root:Then(function()
+				table.insert(order, "fast")
+			end)
+			expect(order).toEqual({ "fast" })
+			slow:Await()
+			expect(order).toEqual({ "fast", "slow" })
+		end)
+
+		t.it("keeps working after user code cancels the thread it ran on", function()
+			local runner
+			Promise.resolve():Then(function()
+				runner = coroutine.running()
+			end)
+			-- The runner is idle again; cancelling it must not break promises.
+			task.cancel(runner)
+			expect(Promise.resolve(5)
+				:Then(function(value)
+					return value * 2
+				end)
+				:Expect()).toBe(10)
+			expect(Promise.new(function(resolve)
+				resolve("ok")
+			end):Expect()).toBe("ok")
+		end)
+
+		t.it("runs handlers in order and passes every value through long chains", function()
+			local promise = Promise.resolve(0)
+			for _ = 1, 200 do
+				promise = promise:Then(function(value)
+					return value + 1, "extra"
+				end)
+			end
+			local ok, value, extra = promise:Await()
+			expect(ok).toBe(true)
+			expect(value).toBe(200)
+			expect(extra).toBe("extra")
 		end)
 	end)
 end

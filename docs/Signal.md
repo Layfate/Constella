@@ -30,7 +30,7 @@ connection:Disconnect()
 | `signal:Fire(...)` | Does nothing once the signal is destroyed |
 | `signal:DisconnectAll()` | |
 | `signal:Destroy()` | Disconnects everything. Idempotent. `Connect`/`Wait` raise afterwards |
-| `signal:GetConnectionCount()` | |
+| `signal:GetConnectionCount()` | Counts the connected listeners (it walks the list, so `Connect` and `Disconnect` don't have to keep a count) |
 | `signal:IsDestroyed()` | |
 | `connection.Connected` | `boolean` |
 | `connection:Disconnect()` / `:Destroy()` | Idempotent |
@@ -42,4 +42,4 @@ Types: `Signal.Signal<T...>` and `Signal.Connection`.
 
 - A thread suspended in `Wait()` stays suspended if the signal is destroyed, and is eventually garbage collected.
 - Listener threads are recycled when a listener doesn't yield. As with any signal that reuses threads, the values of the most recent listener call can stay reachable until that thread runs its next listener. This is bounded to one call and isn't a leak.
-- See [Benchmarks](Benchmarks.md) for how Signal compares with sleitnick/signal: on a Roblox server, `Fire` costs the same like for like (within 1%, about 0.22 µs per listener), `Connect`+`Disconnect` is about 1.45× slower (0.18 vs 0.12 µs), and it uses less memory per connection (160 vs 176 bytes), with per-listener error isolation and ordering guarantees.
+- See [Benchmarks](Benchmarks.md) for how Signal compares with sleitnick/signal: like for like (every listener's errors caught), `Fire` is within 1–11% of sleitnick/signal depending on the server and faster than LemonSignal, `Connect`+`Disconnect` is 1.25–1.45× slower, and it uses the least memory per connection (160 bytes, against 176 and 304), with ordering guarantees the others don't make.

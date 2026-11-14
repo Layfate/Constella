@@ -30,7 +30,7 @@ end)
 
 | Server | Description |
 | --- | --- |
-| `Replication.Server.new(namespace, { Parent?, Logger?, OnError?, MaxValueBytes? }?)` | Creates its own [Network](Network.md) namespace |
+| `Replication.Server.new(namespace, { Parent?, Logger?, OnError?, MaxValueBytes?, Delta? }?)` | Creates its own [Network](Network.md) namespace. `Delta = true` sends table changes as patches (see below) |
 | `replicator:Share(name, state)` | Public. Returns a share with `:Stop()` |
 | `replicator:ShareWith(player, name, state)` | Private. Removed automatically when the player leaves |
 | `replicator:Destroy()` | |
@@ -45,3 +45,23 @@ end)
 A name can be public or private, not both. Private names can be reused across players, so each player can have their own `"Coins"`.
 
 Tables are compared by reference (State semantics). Set a **new** table to replicate a change; changing a table in place won't trigger an update.
+
+## Delta updates
+
+By default every change sends the whole value. With `Delta = true`, a change from one table to another is sent as a **patch** that lists only what changed (recursively), whenever that's smaller than the whole value:
+
+```lua
+local replicator = Constella.Replication.Server.new("Game", { Delta = true })
+replicator:ShareWith(player, "Inventory", inventory)
+
+local nextValue = table.clone(inventory:Get())
+nextValue.Coins += 10
+inventory:Set(nextValue) -- sends about 90 bytes instead of the whole 40-item inventory (~1.9 KB)
+```
+
+- **What clients see is the same.** The client applies the patch to its copy and sets the result as a new table, so subscribers run exactly as they would for a full value. Unchanged nested tables are shared between the old and new value.
+- **Safe with in-place edits.** The server diffs against its own private copy of what clients were last sent, not against the table you passed before. Editing the current table in place and then setting a copy still replicates every change.
+- **Ordering and recovery.** Each patch names the version it builds on. A patch that arrives before that version (during the initial sync) is kept until the value arrives, up to 64 per name. A patch that can't be applied makes the client fetch a fresh snapshot, one fetch at a time; the server's rate limit on fetches still applies.
+- **The trade-off is CPU for bandwidth.** Diffing walks the value once more, so a Delta update costs about 50% more server time than a full send (about 14 µs more for a 40-item inventory on a Roblox server), and saves about 95% of the bytes. See [Benchmarks](Benchmarks.md).
+- **Use it for arrays and string-keyed dictionaries**, which is what RemoteEvents carry faithfully anyway. Patches are built only from arrays and string-keyed fields, so they survive serialization.
+- It's off by default. The full-value path has been verified with real clients in Studio Play mode; Delta is covered by unit tests on the server (including 300 random updates kept in sync, with in-place edits) and by a Play-mode test in `tests/client/ReplicationIntegration.client.luau`.
