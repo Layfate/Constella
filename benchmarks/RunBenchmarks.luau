@@ -14,9 +14,10 @@
 	Missing libraries are skipped. Returns a Markdown report.
 
 	A/B comparisons: pass several builds of the package, for example the
-	current code and the last release. Every case runs for every build inside
-	each run, alternating, so the builds are measured under the same
-	conditions. Implementation names then end in "[name]".
+	current code and the last release. Every case runs for every build
+	back to back inside each run, and every other run reverses their order,
+	so the builds are measured under the same conditions. Implementation
+	names then end in "[name]".
 
 	```lua
 	RunBenchmarks({
@@ -324,7 +325,8 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 		firstSeen[caseKey] = firstSeen[caseKey] or index
 		local implementationKey = caseKey .. "\0" .. (string.gsub(entry.implementation, " %[[^%]]*%]$", ""))
 		firstSeen[implementationKey] = firstSeen[implementationKey] or index
-		entry.position = firstSeen[implementationKey] + index / (#cases + 1)
+		entry.slot = firstSeen[implementationKey]
+		entry.position = entry.slot + index / (#cases + 1)
 	end
 	table.sort(cases, function(a, b)
 		local groupA, groupB = firstSeen[a.group], firstSeen[b.group]
@@ -338,8 +340,24 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 		return a.position < b.position
 	end)
 
-	for _ = 1, runs do
-		for _, entry in cases do
+	-- The same cases with the builds of each implementation in reverse order.
+	-- Every other run uses it, so no build always runs first (straight after
+	-- the previous case, whose garbage the collector may still be working on).
+	local reversed = {}
+	local first = 1
+	while first <= #cases do
+		local last = first
+		while last < #cases and cases[last + 1].slot == cases[first].slot do
+			last += 1
+		end
+		for index = last, first, -1 do
+			table.insert(reversed, cases[index])
+		end
+		first = last + 1
+	end
+
+	for run = 1, runs do
+		for _, entry in if run % 2 == 0 then reversed else cases do
 			local median = Bench.measure(entry.run, entry.iterations, 5)
 			table.insert(entry.samples, median)
 		end
