@@ -29,7 +29,7 @@ Reference pages for every module in Constella v0.2.0.
 | [Component](Component.md) | Behaviour attached to CollectionService tags |
 | [Pool](Pool.md) | Bounded object reuse |
 | [Zone](Zone.md) | Enter/exit detection for players and parts |
-| [Data](Data.md) | Player profiles on ProfileStore (beta) |
+| [Data](Data.md) | Player profiles on ProfileStore |
 
 ## Project
 
@@ -40,7 +40,7 @@ Reference pages for every module in Constella v0.2.0.
 
 ## Known limitations
 
-- **Data is beta.** Production use relies on ProfileStore. The adapter is tested against real ProfileStore 1.0.3, in its mock mode and on real DataStores on a Roblox server in every CI run, but not yet with players moving between live servers. `MemoryAdapter` isn't persistent.
+- **Data needs ProfileStore in production.** Every CI run tests it on real DataStores on real Roblox servers, including a player moving to a second server, but it hasn't yet run in a live game under heavy load. `MemoryAdapter` isn't persistent.
 - **The Play-mode integration tests run in Studio only.** They need a real client. The rest of the suite runs on a Roblox server in CI on every push.
 - **State dependencies are explicit.** Use `State.computed({ a, b }, fn)`; there's no automatic tracking. Compute functions and batches must not yield.
 - **Network payload sizes are estimates,** not Roblox's exact wire sizes. Validation checks the shape of a request; your handlers still decide what's allowed in the game.

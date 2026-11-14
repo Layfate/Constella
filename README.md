@@ -40,8 +40,8 @@ Also available as a ready-to-insert model file (**[download `Constella.rbxm`](ht
 - **Player data that fails closed.** Migrations, template reconciliation and session-loss handling sit on top of ProfileStore's session locking. A failed load never overwrites saved data.
 - **Tested and measured.** Unit tests, Data failure simulations, tests against real ProfileStore, Play-mode integration tests with a hostile client against real remotes, and published [benchmarks](docs/Benchmarks.md) against other libraries and hand-written baselines, including where Constella is slower.
 
-> [!IMPORTANT]
-> `Constella.Data` is **beta**. It runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately. It's tested against real ProfileStore 1.0.3, in mock mode and on real DataStores (on a Roblox server in every CI run), but not yet with players moving between live servers. Test it in a separate published experience before real player data depends on it. See [Data](docs/Data.md).
+> [!NOTE]
+> `Constella.Data` runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately. Every CI run tests it on real DataStores on real Roblox servers, including a player moving to a second server. See [Data](docs/Data.md) for exactly what's verified.
 
 ## Modules
 
@@ -59,7 +59,7 @@ Also available as a ready-to-insert model file (**[download `Constella.rbxm`](ht
 | | [Component](docs/Component.md) | Behaviour attached to CollectionService tags |
 | | [Pool](docs/Pool.md) | Bounded object reuse for projectiles and effects |
 | | [Zone](docs/Zone.md) | Enter/exit detection for players and parts |
-| | [Data](docs/Data.md) | Player profiles on ProfileStore *(beta, server only)* |
+| | [Data](docs/Data.md) | Player profiles on ProfileStore *(server only)* |
 
 ## Quick start
 

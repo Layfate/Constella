@@ -4,7 +4,12 @@ All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.
 
 ## Unreleased
 
+### Changed
+- **Data is no longer beta.** Everything that can be checked before a live game has now been verified on real DataStores on real Roblox servers (see [docs/Data.md](docs/Data.md#status-and-verification)). The API is unchanged.
+
 ### Added
+- **CI:** two live Data scenarios run on real Roblox servers on every push ([`tests/server/Live.luau`](tests/server/Live.luau)). A player moves to a second server: server B sees server A's data, A gives up the session and kicks the player, and B's save is the one stored. And 15 sessions load and save at once on one server.
+- **Docs:** [Data](docs/Data.md) explains ProfileStore's MessagingService subscription limit for servers that keep many profiles open with few players.
 - **CI:** the whole test suite runs on a real Roblox server on every push, through Open Cloud: the CI place is built from `ci.project.json` with a pinned ProfileStore, published to a dedicated CI experience, and run with the Luau execution API. 242 tests pass there, including the live DataStore tests.
 
 ### Changed
