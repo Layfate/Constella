@@ -32,7 +32,10 @@ Verification and performance release: fixes from two code reviews (each with a r
 - **Network:** `MaxInFlight` on client functions (default 8) bounds outstanding `InvokeServer` calls, counting timed-out ones that haven't returned. Beyond it, `Invoke` fails fast with `"TooManyRequests"`. Also adds `fn:GetInFlight()`.
 - **Core:** `WaitForStart` and `StartTimeout` let critical services act as a readiness gate. `App:Start` waits for their `Start` to finish, and any error or timeout fails startup with a rollback.
 - **CI:** a GitHub Actions workflow checks formatting (StyLua), lint (selene) and Roblox types (luau-lsp, strict) on every push and pull request.
-- **Benchmarks:** the report also lists every run's result, not just the median, best and worst.
+- **Benchmarks:** the report also lists every run's result, not just the median, best and worst. New cases: Signal `Fire` with 100 and 1,000 listeners, and hand-written weighted-pick baselines without validation for Random.
+- **Docs:** a server-authoritative reward pattern in [docs/Random.md](docs/Random.md#server-authoritative-rewards).
+- **Releases:** publishing a GitHub release builds `Constella.rbxm` from the tagged source with the pinned Rojo and attaches it. The build fails if the tag doesn't match `Constella.Version`.
+- **Repository:** [SECURITY.md](SECURITY.md) with private vulnerability reporting, issue and pull request templates, and Dependabot for the workflow actions.
 
 ## 0.1.0 — 2026-11-13
 

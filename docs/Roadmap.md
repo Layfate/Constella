@@ -23,7 +23,8 @@ This stage proved that what exists works well. No new modules were added.
 - **Pool:** ✅ instance reuse benchmarked (1.7–2× faster than clone and destroy).
 - **Benchmarks:** ✅ see [Benchmarks](Benchmarks.md). They led to a 3–4× faster Signal, a further 3–5% on `Fire` from inlined dispatch, and 4× less Cleanup memory.
 - **Strict type check:** ✅ clean under luau-lsp with Roblox types, and enforced in CI along with StyLua and selene.
-- **Reviews:** ✅ two code reviews; every fix has a regression test (see the [changelog](../CHANGELOG.md)).
+- **Random:** ✅ chi-squared tests for the weights, the Luck formula and shuffle; a [server-authoritative reward pattern](Random.md#server-authoritative-rewards) is documented.
+- **Reviews:** ✅ three rounds of review fixes, including a Data shutdown race and runaway `Start` threads; every fix has a regression test (see the [changelog](../CHANGELOG.md)).
 
 ## Next (toward 0.3.0)
 
@@ -31,7 +32,6 @@ Still verification work. No new modules are planned.
 
 - **Data:** run it against live DataStores in a separate published experience (disconnects, shutdowns, rejoining a second server, high player counts). Data stays beta until then.
 - **Pool:** measure memory over long sessions.
-- **Random:** add statistical distribution tests (chi-squared) on top of the existing tolerance tests. Document a pattern for server-authoritative reward flows.
 
 ## Toward 1.0
 
