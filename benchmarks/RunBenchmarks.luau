@@ -425,7 +425,7 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 			end
 		end)
 
-		-- A server tick with 50 players: coins changing, a request each, a
+		-- A synthetic tick with 50 simulated players (replication sends disabled): coins changing, a request each, a
 		-- zone check, a replicated leaderboard update, a broadcast signal
 		-- and a few promises.
 		local PLAYERS = 50
@@ -459,7 +459,7 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 			tickSignal:Connect(noop)
 		end
 		local tick = 0
-		case("Scenario", "Server tick, 50 players", "Constella" .. suffix, 200, function(n)
+		case("Scenario", "Synthetic tick, 50 simulated players", "Constella" .. suffix, 200, function(n)
 			for _ = 1, n do
 				tick += 1
 				for index = 1, PLAYERS do
@@ -1002,7 +1002,7 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 		table.insert(lines, ("| %s | %s | %d | %d |"):format(row[1], row[2], math.floor(row[3] + 0.5), row[4]))
 	end
 	table.insert(lines, "")
-	table.insert(lines, "| Bytes per update (one field of a 40-item inventory changes) | Bytes |")
+	table.insert(lines, "| Estimated payload per update (one field of a 40-item inventory changes) | Estimated bytes |")
 	table.insert(lines, "| --- | ---: |")
 	for _, row in bandwidth do
 		table.insert(lines, ("| %s | %d |"):format(row[1], row[2]))

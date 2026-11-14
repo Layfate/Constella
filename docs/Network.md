@@ -93,6 +93,10 @@ Validation only checks that the *shape* of a request is acceptable. Your handler
 
 Server options: `Parent`, `OnReject(player, endpoint, reason, detail)`, `OnError(message)`, `Logger` (a [Debug](Debug.md) logger) and `Clock` (for tests).
 
+Server options also include `MaxInFlightPerPlayer` (16), `MaxInFlight` (256) and `RejectLogInterval` (5 seconds). Concurrent request limits apply across every endpoint in the namespace, before validators or authorization can yield, and stay occupied until all handlers return. Excess events are dropped; functions return `RateLimited`. `GetStats()[endpoint].Rejected.Busy` counts concurrency rejections, and `InFlight` reports currently occupied requests. A player disconnect does not free slots still occupied by running work.
+
+Logger warnings aggregate rejection counts per endpoint and reason. The first rejection logs immediately; subsequent warnings occur when another rejection arrives after the interval. `Count` includes rejections since the preceding warning. `OnReject` and `GetStats` still count every rejection. Set `RejectLogInterval = 0` to log every rejection. Client `MaxInFlight` limits protect that client; enforce server limits independently.
+
 ## Validators (`Network.Check`)
 
 Each validator is a function `(value) -> (ok, reason?)`, so you can write your own.

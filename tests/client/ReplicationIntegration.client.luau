@@ -24,6 +24,18 @@ local replica = Constella.Replication.Client.new("ConstellaReplicationTest")
 -- Created now, before the server's changes, so the inventory's updates
 -- arrive as Delta patches rather than in the snapshot.
 local deltaReplica = Constella.Replication.Client.new("ConstellaReplicationDeltaTest")
+local deltaTransport = Constella.Network.Client.new("ConstellaReplicationDeltaTest")
+local patches = 0
+deltaTransport:Event("Update"):Connect(function(_, _, _, _, base)
+	if base ~= nil then
+		patches += 1
+	end
+end)
+local raceReplica = Constella.Replication.Client.new("ConstellaReplicationRaceTest")
+check(raceReplica:Get("Race"):Get() == 2, "initial sync: late snapshot did not overwrite live update")
+raceReplica:Destroy()
+local readyOk, ready = deltaTransport:Function("Ready"):Invoke()
+check(readyOk and ready == true, "server accepted readiness barrier")
 
 check(replica:Get("Secret"):Get() == "for " .. player.Name, "own private value is visible")
 check(replica:Get("OtherSecret"):Get() == nil, "another player's private value is not visible")
@@ -64,7 +76,10 @@ if itemsIntact then
 	end
 end
 check(itemsIntact, "delta: the unchanged items arrived intact")
+check(patches > 0, "delta: received patches through real RemoteEvent serialization")
 deltaReplica:Destroy()
+deltaTransport:Destroy()
+replica:Destroy()
 
 if #failures == 0 then
 	print("[Constella integration] Replication PASS")

@@ -19,6 +19,7 @@ end
 - **Bounded memory.** `MaxIdle` (default 64) caps how many released objects are kept. Any extra objects are destroyed when they're released.
 - **Deterministic release.** Releasing an object that isn't currently acquired from this pool raises an error. That covers releasing twice and releasing an object from another pool.
 - **Safe reset.** If `Reset` fails, the object is destroyed instead of being reused in an unknown state, and the error is raised.
+- **Prewarm cleanup.** A failing prewarm Reset also destroys its object. If constructor prewarming fails, earlier idle objects are destroyed too. Calling `Prewarm` after `Destroy` raises.
 - **Destroy.** Idle objects are destroyed immediately. Objects still acquired are destroyed when they're released.
 
 ## API

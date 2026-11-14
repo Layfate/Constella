@@ -102,6 +102,10 @@ Keep the CI place closed in Studio: while it's open, publishing to it fails with
 
 The integration tests also work in Studio's **Server & Clients** mode: every client runs its half, and the server checks each player against its own counts.
 
+For automated client checks, build the isolated test place with `rojo build multiplayer.project.json -o build/multiplayer.rbxl`, then run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .github/scripts/studio_tests.ps1`. This uses Studio's [RunScript CLI](https://create.roblox.com/docs/studio/command-line-interface) and [StudioTestService](https://create.roblox.com/docs/reference/engine/classes/StudioTestService) to run two real clients. It checks hostile Network requests, serialized Delta patches, a stale initial snapshot arriving after a live update, private visibility and disconnect cleanup. Failure, missing reports and timeouts fail the command.
+
+The `Studio client integration` workflow runs this command on pushes and manual dispatch when repository variable `ROBLOX_STUDIO_CI` is `true`. Register an authenticated Windows runner with labels `self-hosted`, `Windows`, `roblox-studio`; set `ROBLOX_STUDIO_EXE` if Studio is outside its usual installation folder. Open Cloud server tests remain a separate job. Hosted Ubuntu runners do not execute client scripts.
+
 ## Releasing
 
 1. Set the new version in `src/shared/Constella/init.luau`, `wally.toml`, `pesde.toml`, the README badge and install lines, `docs/README.md` and `tests/server/Root.spec.luau`.
@@ -110,6 +114,8 @@ The integration tests also work in Studio's **Server & Clients** mode: every cli
 4. Publish a GitHub release with the tag `vX.Y.Z`. The release workflow checks that all three version numbers match the tag, builds `Constella.rbxm` from that tag and attaches it, then publishes to Wally and pesde when the `WALLY_TOKEN` and `PESDE_TOKEN` secrets are set.
 
 Every push also builds both packages and checks that each contains only the library (`.github/scripts/check_packages.py`). Wally ignores `include`, so `wally.toml` excludes everything else by name; if you add a top-level file, add it there too or that check fails.
+
+After Wally publication, the release workflow installs the exact version in a temporary consumer and compares every installed module with the tagged source (`.github/scripts/check_consumer.py`). Run that check locally after publication as well. A package archive check before publication does not verify registry availability.
 
 ## Pull requests
 

@@ -24,6 +24,7 @@ end)
 - **Value checks.** Functions, threads, userdata and tables with metatables are refused, and values over `MaxValueBytes` (16 KB by default) are refused too. These are reported on the server and never sent.
 - **Ordering.** Versions come from one counter per replicator that only ever goes up. A snapshot that arrives late can never overwrite a newer update. A share that's stopped and recreated under the same name always continues above every version a client has already seen.
 - **Snapshots only contain validated values.** If an update is rejected (unsupported or too large), it's reported on the server, and both live updates and snapshots keep serving the last value that passed validation.
+- **Table ownership.** The server caches an independent deep copy of every accepted value in both full and Delta modes. Later mutations of the game's source tables cannot alter snapshots. Internal snapshot reads also return copies.
 - On the client, values are **read-only** states. The server stays the source of truth.
 
 ## API

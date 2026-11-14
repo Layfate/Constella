@@ -35,6 +35,50 @@ return function(t, Constella)
 		task.wait()
 	end
 
+	for _, action in { "destroy", "tag removal", "ancestry removal" } do
+		t.it("cancels yielding Start before " .. action .. " cleanup", function()
+			local folder, outside, tag, tagged, teardown = setup()
+			local part = tagged()
+			local gate = Constella.Signal.new()
+			local continued, stopped, cleaned = false, false, false
+			local startup
+			local manager = Component.new({
+				Tag = tag,
+				Ancestors = { folder },
+				Start = function(self)
+					startup = coroutine.running()
+					self.Cleanup:Add(function()
+						cleaned = true
+					end)
+					gate:Wait()
+					continued = true
+				end,
+				Stop = function()
+					expect(coroutine.status(startup)).toBe("dead")
+					stopped = true
+				end,
+			})
+			manager:Run()
+			if action == "destroy" then
+				manager:Destroy()
+			elseif action == "tag removal" then
+				CollectionService:RemoveTag(part, tag)
+			else
+				part.Parent = outside
+			end
+			frame()
+			-- Destroying the gate discards its waiter without resuming a
+			-- coroutine that the component correctly cancelled.
+			gate:Destroy()
+			expect(continued).toBe(false)
+			expect(stopped).toBe(true)
+			expect(cleaned).toBe(true)
+			expect(manager:Get(part)).toBeNil()
+			manager:Destroy()
+			teardown()
+		end)
+	end
+
 	t.it("attaches to existing and new tagged instances with Instance and Cleanup", function()
 		local folder, _, tag, tagged, teardown = setup()
 		local existing = tagged()

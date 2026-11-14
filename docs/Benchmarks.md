@@ -1,6 +1,6 @@
 # Benchmarks
 
-Measured results, including where Constella loses. Every pull request reruns the whole suite on a Roblox server against the code it changes, and fails if anything got measurably slower (see [How to run](#how-to-run)), so these numbers are checked continuously rather than once.
+Historical measurements for the commit named below, including where Constella loses. They do not measure the latest lifecycle and concurrency improvements; the version remains 0.3.0. Every pull request reruns the whole suite on a Roblox server against the code it changes, and fails if anything got measurably slower (see [How to run](#how-to-run)), so these numbers are checked continuously rather than once.
 
 ## Setup
 
@@ -36,7 +36,7 @@ Median µs per operation. Only the rows with a clear change are listed here; the
 | Replication: publish one change to a 40-item inventory (full value) | **25.596** | 38.098 | **−33%** [−36, −28] |
 | Zone: step, 100 tracked Parts (built-in getters) | **36.418** | 41.733 | **−13%** [−20, −6] |
 | Zone: step, 100 tracked points (custom getters) | **28.362** | 30.983 | **−8%** [−16, −5] |
-| Scenario: one server tick with 50 players | **357.603** | 401.799 | **−11%** [−17, −4] |
+| Scenario: synthetic tick with 50 simulated players | **357.603** | 401.799 | **−11%** [−17, −4] |
 | Network: accept a valid request | 2.514 | 2.668 | −6% [−9, 0] |
 | Data: load + release a profile | 56.676 | 61.861 | −8% [−26, −1] |
 
@@ -103,9 +103,9 @@ Median µs per operation, with the best and worst of the 7 runs.
 | Replication | Publish one change to a 40-item inventory | **Constella.Replication**, `Delta = true` | 39.523 | 35.216 | 43.238 |
 | Data | Load + release a profile (MemoryAdapter) | **Constella.Data** | 56.676 | 43.472 | 61.785 |
 | Component | Run + Destroy with 200 tagged parts | **Constella.Component** | 2068.070 | 1813.504 | 2360.904 |
-| Scenario | Server tick, 50 players | **Constella** | 357.603 | 333.664 | 368.405 |
+| Scenario | Synthetic tick, 50 simulated players | **Constella** | 357.603 | 333.664 | 368.405 |
 
-The scenario is one server tick for 50 players: each player's coins change and each sends a validated request, a zone checks all 50, a replicated 50-entry leaderboard (Delta) changes, a signal fires to 50 listeners and 10 promises resolve. On this slow server that's 0.36 ms, about 2% of a 60 FPS frame.
+The scenario is a synthetic workload with 50 stand-in player tables. It calls the server request path directly, changes coins and a 50-entry Delta leaderboard, steps a zone, fires a signal and resolves promises. Replication sends are replaced with a no-op. The recorded 0.36 ms measures server-side library work only; it does not measure 50 connected clients, transport cost, serialization or complete game frame time.
 
 ## Memory
 
@@ -117,6 +117,8 @@ The scenario is one server tick for 50 players: each player's coins change and e
 | Pending promise from `Then` | **242 bytes** | 2,896 (evaera/roblox-lua-promise) |
 
 The promise rows include the 16-byte array slot that keeps each promise. evaera's promises record a stack trace when they're created, which is most of their size.
+
+The byte figures below are estimates from `Network.Payload.measure`, not captured engine traffic. They exclude transport overhead, compression and retransmissions. Real-client throughput and multi-hour memory measurements remain unverified.
 
 ## Leaks
 
@@ -142,7 +144,7 @@ The unit tests include the same kind of checks (plus Data: a player released dur
 - **Replication full sends got a third faster** by checking and measuring a value in one walk instead of two. **Delta** cuts the bytes for a small change to a 40-item inventory by 95% (1,929 → 90) for about 54% more server time per update than a full send. That's the usual trade: bandwidth is the scarcer resource on Roblox servers, which is why Delta exists, and why it's opt-in.
 - **Zone** costs about 0.3 µs per tracked item per step, 8–13% less than before: it no longer allocates per step, and built-in position getters skip the protected call.
 - **Random:** `lootTable:Roll` is 19× faster than `Random.choose` and 2× faster than a hand-written precomputed scan, so use a loot table for anything rolled often.
-- **A whole 50-player tick** of typical Constella work costs 0.36 ms on this slow server, 11% less than before.
+- **The synthetic workload with 50 simulated players** took 0.36 ms in the recorded run, 11% less than the baseline. Actual replication sends were disabled.
 
 ## History
 

@@ -107,6 +107,11 @@ local function detach(self: any, instance: Instance)
 		return
 	end
 	self._objects[instance] = nil
+	local startup = object._startup
+	object._startup = nil
+	if startup and startup ~= coroutine.running() and coroutine.status(startup) ~= "dead" then
+		task.cancel(startup)
+	end
 	local definition = self._definition
 	if definition.Stop and object._started then
 		local ok, err = xpcall(definition.Stop, traceback, object)
@@ -129,7 +134,7 @@ local function attach(self: any, instance: Instance)
 	if self._objects[instance] then
 		return
 	end
-	local object = setmetatable({
+	local object: any = setmetatable({
 		Instance = instance,
 		Cleanup = Cleanup.new(),
 		Component = self,
@@ -143,8 +148,9 @@ local function attach(self: any, instance: Instance)
 		local synchronous = true
 		local failed = false
 		object._started = true
-		task.spawn(function()
+		local startup = coroutine.create(function()
 			local ok, err = xpcall(definition.Start, traceback, object)
+			object._startup = nil
 			if not ok then
 				self._onError(PREFIX .. ("Start failed for %s: %s"):format(instance:GetFullName(), tostring(err)))
 				if synchronous then
@@ -152,6 +158,8 @@ local function attach(self: any, instance: Instance)
 				end
 			end
 		end)
+		object._startup = startup
+		task.spawn(startup)
 		synchronous = false
 		if failed then
 			object._started = false -- Stop is for objects whose Start succeeded or is running
@@ -235,6 +243,7 @@ function ComponentClass.Destroy(self: any)
 	if self._destroyed then
 		return
 	end
+	self._destroyed = true
 	self._cleanup:Destroy()
 	local instances = {}
 	for instance in self._watched do
@@ -243,7 +252,6 @@ function ComponentClass.Destroy(self: any)
 	for _, instance in instances do
 		unwatch(self, instance)
 	end
-	self._destroyed = true
 	self.Added:Destroy()
 	self.Removed:Destroy()
 end

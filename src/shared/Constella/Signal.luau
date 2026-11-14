@@ -230,7 +230,7 @@ function SignalClass.Fire(self: any, ...: any)
 				-- Read before Disconnect, which clears the callback slot.
 				local callback = node[CALLBACK]
 				node:Disconnect()
-				if freeRunner == nil then
+				if freeRunner == nil or coroutine.status(freeRunner :: thread) ~= "suspended" then
 					freeRunner = newRunner()
 				end
 				task.spawn(freeRunner :: thread, onError, callback, ...)
@@ -240,7 +240,7 @@ function SignalClass.Fire(self: any, ...: any)
 				break
 			end
 			if node.Connected then
-				if freeRunner == nil then
+				if freeRunner == nil or coroutine.status(freeRunner :: thread) ~= "suspended" then
 					freeRunner = newRunner()
 				end
 				task.spawn(freeRunner :: thread, onError, node[CALLBACK], ...)

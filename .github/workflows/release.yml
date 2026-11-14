@@ -98,6 +98,10 @@ jobs:
           wally login --token "$WALLY_TOKEN"
           wally publish
 
+      - name: Verify Wally installation in a clean consumer
+        if: env.WALLY_TOKEN != ''
+        run: python3 .github/scripts/check_consumer.py
+
       - name: Publish to pesde
         run: |
           if [ -z "$PESDE_TOKEN" ]; then

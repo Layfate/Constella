@@ -29,6 +29,7 @@ exclude = [
 	"ci.project.json",
 	"ci.generated.project.json",
 	"dev.project.json",
+	"multiplayer.project.json",
 	"pesde.toml",
 	"pesde.lock",
 	"rokit.toml",

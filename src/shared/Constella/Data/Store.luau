@@ -323,95 +323,132 @@ function StoreClass.LoadAsync(self: any, player: Player): any
 	end
 
 	local key = self._keyFor(player)
-	self._cancelled[player] = nil
+	-- The worker owns the session until it commits a profile. Cancelling the
+	-- public promise must not cancel that worker or skip its final cleanup.
+	local operation = { player = player, cancelled = false }
+	self._pending[operation] = true
 
 	local function shouldCancel(): boolean
-		return self._closing or self._cancelled[player] == true or not isInGame(player)
+		return self._closing or operation.cancelled or not isInGame(player)
 	end
 
-	local promise = Promise.retry(function()
-		return Promise.new(function(resolve, reject)
-			local session, reason = self._backend:StartSession(key, {
-				UserId = (player :: any).UserId,
-				ShouldCancel = shouldCancel,
-			})
-			if session then
-				resolve(session)
-			else
-				reject(reason or "SessionUnavailable")
-			end
-		end)
-	end, {
-		Attempts = self._attempts,
-		Delay = self._retryDelay,
-		Backoff = 2,
-		ShouldRetry = function(reason)
-			return reason ~= "Cancelled" and not shouldCancel()
-		end,
-	})
-		:Catch(function(reason)
-			if Promise.isError(reason) or getmetatable(reason) == ErrorClass then
-				return Promise.reject(reason)
-			end
-			if reason == "Cancelled" or shouldCancel() then
-				return Promise.reject(dataError("PlayerLeft", "loading was cancelled"))
-			end
-			return Promise.reject(dataError("LoadFailed", ("could not start a session: %s"):format(tostring(reason))))
-		end)
-		:Then(function(session)
-			if shouldCancel() then
-				endSession(self, session, key)
-				local kind: ErrorKind = if self._closing
-					then "ShuttingDown"
-					elseif self._cancelled[player] and isInGame(player) then "Released"
-					else "PlayerLeft"
-				return Promise.reject(dataError(kind, "loading was cancelled"))
-			end
-			local prepared, problem = self:_prepare(session.Data)
-			if prepared == nil then
-				-- End WITHOUT applying anything: the stored data is untouched.
-				endSession(self, session, key)
-				return Promise.reject(problem)
-			end
-			Util.replaceContents(session.Data, prepared)
+	local function cancelledError(): DataError
+		local kind: ErrorKind = if self._closing
+			then "ShuttingDown"
+			elseif operation.cancelled and isInGame(player) then "Released"
+			else "PlayerLeft"
+		return dataError(kind, "loading was cancelled")
+	end
 
-			local profile = setmetatable({
-				Player = player,
-				Key = key,
-				Data = session.Data,
-				Changed = Signal.new(),
-				_session = session,
-				_store = self,
-				_active = true,
-				_releasing = false,
-			}, ProfileClass)
-			self._profiles[player] = profile
-			session:OnSessionEnd(function()
-				onSessionLost(self, player, profile)
+	local promise: any
+	promise = Promise.new(function(resolve, reject, onCancel)
+		onCancel(function()
+			operation.cancelled = true
+			if self._loading[player] == promise then
+				self._loading[player] = nil
+			end
+		end)
+		-- Defer until the public promise has been assigned to _loading.
+		task.defer(function()
+			local session: any = nil
+			local committed = false
+			local ok, profile, problem = xpcall(function(): (any, DataError?)
+				if shouldCancel() then
+					return nil, cancelledError()
+				end
+				local opened, result = Promise.retry(function()
+					if shouldCancel() then
+						return Promise.reject("Cancelled")
+					end
+					local acquired, reason = self._backend:StartSession(key, {
+						UserId = (player :: any).UserId,
+						ShouldCancel = shouldCancel,
+					})
+					return if acquired then acquired else Promise.reject(reason or "SessionUnavailable")
+				end, {
+					Attempts = self._attempts,
+					Delay = self._retryDelay,
+					Backoff = 2,
+					ShouldRetry = function(reason)
+						return reason ~= "Cancelled" and not shouldCancel()
+					end,
+				}):Await()
+				if not opened then
+					return nil,
+						if shouldCancel()
+							then cancelledError()
+							else dataError(
+								"LoadFailed",
+								("could not start a session: %s"):format(tostring(result))
+							)
+				end
+				session = result
+				if shouldCancel() then
+					return nil, cancelledError()
+				end
+				local prepared, failure = self:_prepare(session.Data)
+				-- Migrations are user code and may yield for arbitrarily long.
+				if shouldCancel() then
+					return nil, cancelledError()
+				end
+				if not session:IsActive() then
+					return nil, dataError("Released", "the session ended during loading")
+				end
+				if prepared == nil then
+					return nil, failure
+				end
+				Util.replaceContents(session.Data, prepared)
+				local loadedProfile = setmetatable({
+					Player = player,
+					Key = key,
+					Data = session.Data,
+					Changed = Signal.new(),
+					_session = session,
+					_store = self,
+					_active = true,
+					_releasing = false,
+				}, ProfileClass)
+				session:OnSessionEnd(function()
+					onSessionLost(self, player, loadedProfile)
+				end)
+				self._profiles[player] = loadedProfile
+				committed = true
+				return loadedProfile, nil
+			end, function(err)
+				return dataError("LoadFailed", debug.traceback(tostring(err), 2))
 			end)
-			return profile
+			if session and not committed then
+				endSession(self, session, key)
+			end
+			self._pending[operation] = nil
+			if self._loading[player] == promise then
+				self._loading[player] = nil
+			end
+			if not ok then
+				problem, profile = profile, nil
+			end
+			if profile then
+				self._stats.LoadsSucceeded += 1
+				self:_log("Profile loaded", { Key = key })
+				self.Loaded:Fire(player, profile)
+				resolve(profile)
+			else
+				local kind = if type(problem) == "table" then problem.Kind else nil
+				if
+					not operation.cancelled
+					and kind ~= "PlayerLeft"
+					and kind ~= "ShuttingDown"
+					and kind ~= "Released"
+				then
+					self._stats.LoadsFailed += 1
+					self:_report(("Could not load %s: %s"):format(key, tostring(problem)))
+					kick(self, player, self._kickMessage)
+				end
+				reject(problem)
+			end
 		end)
-
-	self._loading[player] = promise
-	-- Once the load has settled, nothing reads the cancel flag again; clearing
-	-- it means a player who left mid-load isn't referenced forever.
-	promise:Then(function(profile)
-		self._loading[player] = nil
-		self._cancelled[player] = nil
-		self._stats.LoadsSucceeded += 1
-		self:_log("Profile loaded", { Key = key })
-		self.Loaded:Fire(player, profile)
-	end, function(problem)
-		self._loading[player] = nil
-		self._cancelled[player] = nil
-		local kind = if type(problem) == "table" then problem.Kind else nil
-		if kind == "PlayerLeft" or kind == "ShuttingDown" or kind == "Released" then
-			return
-		end
-		self._stats.LoadsFailed += 1
-		self:_report(("Could not load %s: %s"):format(key, tostring(problem)))
-		kick(self, player, self._kickMessage)
 	end)
+	self._loading[player] = promise
 	return promise
 end
 
@@ -422,8 +459,10 @@ end
 --- Ends the player's session (the adapter performs the final save).
 --- Cancels a load that is still in progress.
 function StoreClass.Release(self: any, player: Player)
-	if self._loading[player] then
-		self._cancelled[player] = true
+	for operation in self._pending do
+		if operation.player == player then
+			operation.cancelled = true
+		end
 	end
 	local profile = self._profiles[player]
 	if profile == nil then
@@ -470,9 +509,6 @@ function StoreClass.Shutdown(self: any, budgetSeconds: number?): boolean
 		connection:Disconnect()
 	end
 	table.clear(self._connections)
-	for player in self._loading do
-		self._cancelled[player] = true
-	end
 
 	local players = {}
 	for player in self._profiles do
@@ -484,15 +520,18 @@ function StoreClass.Shutdown(self: any, budgetSeconds: number?): boolean
 	-- Every session being released, by this call or earlier, is in _ending
 	-- until its final save has finished.
 	local deadline = os.clock() + (budgetSeconds or 20)
-	while next(self._ending) ~= nil and os.clock() < deadline do
+	while (next(self._ending) ~= nil or next(self._pending) ~= nil) and os.clock() < deadline do
 		task.wait()
 	end
 	local pending = 0
 	for _ in self._ending do
 		pending += 1
 	end
+	for _ in self._pending do
+		pending += 1
+	end
 	if pending > 0 then
-		self:_report(("Shutdown budget exceeded with %d session(s) still ending"):format(pending))
+		self:_report(("Shutdown budget exceeded with %d pending load(s) or session end(s)"):format(pending))
 		return false
 	end
 	return true
@@ -500,7 +539,7 @@ end
 
 function StoreClass.GetStats(self: any): Stats
 	local loading = 0
-	for _ in self._loading do
+	for _ in self._pending do
 		loading += 1
 	end
 	local loaded = 0
@@ -591,7 +630,7 @@ function Store.new<T>(config: Config<T>): Store<T>
 		end,
 		_profiles = {},
 		_loading = {},
-		_cancelled = {},
+		_pending = {},
 		_connections = {},
 		_bound = false,
 		_closing = false,

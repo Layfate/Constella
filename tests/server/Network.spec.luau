@@ -20,6 +20,117 @@ return function(t, Constella)
 	end
 
 	-- A controllable clock for rate limiting.
+	t.describe("server concurrency", function()
+		t.it("bounds yielding events across endpoints and players, then returns capacity", function()
+			local server = newServer({ MaxInFlightPerPlayer = 1, MaxInFlight = 2 })
+			local gate = Constella.Signal.new()
+			local a = server:Event("A", { Schema = {}, RateLimit = false })
+			local b = server:Event("B", { Schema = {}, RateLimit = false })
+			local calls = 0
+			a:Connect(function()
+				calls += 1
+				gate:Wait()
+			end)
+			b:Connect(function()
+				calls += 1
+				gate:Wait()
+			end)
+			local alice, bob, eve = fakePlayer("Alice"), fakePlayer("Bob"), fakePlayer("Eve")
+			a:_receive(alice)
+			b:_receive(alice)
+			b:_receive(bob)
+			a:_receive(eve)
+			expect(calls).toBe(2)
+			expect(server:GetStats().A.InFlight).toBe(1)
+			expect(server:GetStats().A.Rejected.Busy).toBe(1)
+			expect(server:GetStats().B.Rejected.Busy).toBe(1)
+			server:_forgetPlayer(alice) -- disconnect must not reset occupied slots
+			a:_receive(alice)
+			expect(calls).toBe(2)
+			gate:Fire()
+			expect(server:GetStats().A.InFlight).toBe(0)
+			a:_receive(alice)
+			expect(calls).toBe(3)
+			gate:Fire()
+			server:Destroy()
+			gate:Destroy()
+		end)
+
+		t.it("holds an event slot until all listeners return", function()
+			local server = newServer({ MaxInFlight = 1 })
+			local gate = Constella.Signal.new()
+			local event = server:Event("Many", { Schema = {}, RateLimit = false })
+			event:Connect(function() end)
+			event:Connect(function()
+				gate:Wait()
+			end)
+			event:_receive(fakePlayer())
+			expect(server:GetStats().Many.InFlight).toBe(1)
+			gate:Fire()
+			expect(server:GetStats().Many.InFlight).toBe(0)
+			server:Destroy()
+			gate:Destroy()
+		end)
+
+		t.it("bounds yielding authorization and releases function slots on errors", function()
+			local server = newServer({ MaxInFlight = 1 })
+			local gate = Constella.Signal.new()
+			local func = server:Function("Slow", {
+				Schema = {},
+				RateLimit = false,
+				Authorize = function()
+					gate:Wait()
+					return true
+				end,
+			})
+			func:SetHandler(function()
+				error("handler failed")
+			end)
+			local finished = false
+			task.spawn(function()
+				local ok, code = func:_invoke(fakePlayer())
+				expect(ok).toBe(false)
+				expect(code).toBe("ServerError")
+				finished = true
+			end)
+			local ok, code = func:_invoke(fakePlayer())
+			expect(ok).toBe(false)
+			expect(code).toBe("RateLimited")
+			expect(server:GetStats().Slow.InFlight).toBe(1)
+			gate:Fire()
+			expect(finished).toBe(true)
+			expect(server:GetStats().Slow.InFlight).toBe(0)
+			server:Destroy()
+			gate:Destroy()
+		end)
+
+		t.it("aggregates rejection logs while retaining exact counters", function()
+			local now, logs = 0, {}
+			local server = newServer({
+				Clock = function()
+					return now
+				end,
+				RejectLogInterval = 5,
+				Logger = {
+					Warn = function(_, _, fields)
+						table.insert(logs, fields)
+					end,
+				},
+			})
+			local event = server:Event("Reject")
+			for _ = 1, 100 do
+				event:_receive(fakePlayer())
+			end
+			expect(#logs).toBe(1)
+			now = 5
+			event:_receive(fakePlayer())
+			expect(#logs).toBe(2)
+			expect(logs[2].Count).toBe(100)
+			expect(server:GetStats().Reject.Rejected.NotAccepted).toBe(101)
+			server:Destroy()
+		end)
+	end)
+
 	local function fakeClock()
 		local now = 0
 		return function()

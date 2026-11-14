@@ -1,0 +1,38 @@
+name: Studio client integration
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  multiplayer:
+    if: vars.ROBLOX_STUDIO_CI == 'true'
+    runs-on: [self-hosted, Windows, roblox-studio]
+    timeout-minutes: 10
+    concurrency:
+      group: constella-studio
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install pinned Rojo
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Path build/tools -Force | Out-Null
+          gh release download v7.4.4 --repo rojo-rbx/rojo --pattern rojo-7.4.4-windows-x86_64.zip --dir build/tools
+          Expand-Archive build/tools/rojo-7.4.4-windows-x86_64.zip build/tools
+      - name: Build isolated multiplayer place
+        shell: pwsh
+        run: build/tools/rojo.exe build multiplayer.project.json -o build/multiplayer.rbxl
+      - name: Run two real clients and verify disconnect
+        shell: pwsh
+        run: .github/scripts/studio_tests.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studio-client-results
+          path: build/studio-results.log
