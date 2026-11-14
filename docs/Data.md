@@ -125,6 +125,8 @@ When the backend ends a session (for example the player joined another server, w
 
 ## API
 
+`Data.Store.new` takes its type from `Template`: `profile.Data` is typed, so `profile.Data.Coins` is a `number` and a misspelt key is a type error. `store:LoadAsync(player)` returns a `Promise<Profile<T>>`, and `store.Loaded` passes a typed `Profile<T>`.
+
 | Member | Description |
 | --- | --- |
 | `Data.Store.new(config)` | `Name`, `Template`, `Adapter`, `Version?`, `Migrations?`, `LoadAttempts?` (3), `RetryDelay?` (1s, doubling), `KickOnFailure?`, `Key?(player)`, `Logger?`, `OnError?` |

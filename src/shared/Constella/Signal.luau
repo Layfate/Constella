@@ -21,19 +21,19 @@
 
 export type Connection = {
 	Connected: boolean,
-	Disconnect: (self: any) -> (),
-	Destroy: (self: any) -> (),
+	Disconnect: (self: Connection) -> (),
+	Destroy: (self: Connection) -> (),
 }
 
 export type Signal<T...> = {
-	Connect: (self: any, callback: (T...) -> ()) -> Connection,
-	Once: (self: any, callback: (T...) -> ()) -> Connection,
-	Wait: (self: any) -> T...,
-	Fire: (self: any, T...) -> (),
-	DisconnectAll: (self: any) -> (),
-	Destroy: (self: any) -> (),
-	GetConnectionCount: (self: any) -> number,
-	IsDestroyed: (self: any) -> boolean,
+	Connect: (self: Signal<T...>, callback: (T...) -> ()) -> Connection,
+	Once: (self: Signal<T...>, callback: (T...) -> ()) -> Connection,
+	Wait: (self: Signal<T...>) -> T...,
+	Fire: (self: Signal<T...>, T...) -> (),
+	DisconnectAll: (self: Signal<T...>) -> (),
+	Destroy: (self: Signal<T...>) -> (),
+	GetConnectionCount: (self: Signal<T...>) -> number,
+	IsDestroyed: (self: Signal<T...>) -> boolean,
 }
 
 export type Options = {

@@ -40,8 +40,8 @@ export type Definition = {
 	Tag: string,
 	Ancestors: { Instance }?,
 	Filter: ((instance: Instance) -> boolean)?,
-	Start: ((self: any) -> ())?,
-	Stop: ((self: any) -> ())?,
+	Start: ((self: Definition) -> ())?,
+	Stop: ((self: Definition) -> ())?,
 	[string]: any,
 }
 
@@ -60,10 +60,10 @@ export type Component = {
 	Tag: string,
 	Added: Signal.Signal<any>,
 	Removed: Signal.Signal<any>,
-	Run: (self: any) -> (),
-	Get: (self: any, instance: Instance) -> any,
-	GetAll: (self: any) -> { any },
-	Destroy: (self: any) -> (),
+	Run: (self: Component) -> (),
+	Get: (self: Component, instance: Instance) -> any,
+	GetAll: (self: Component) -> { any },
+	Destroy: (self: Component) -> (),
 }
 
 local PREFIX = "[Constella.Component] "

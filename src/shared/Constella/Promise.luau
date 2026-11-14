@@ -31,15 +31,41 @@ export type PromiseError = {
 	Trace: string?,
 }
 
-export type Promise = {
-	Then: (self: any, onResolved: ((...any) -> ...any)?, onRejected: ((...any) -> ...any)?) -> Promise,
-	Catch: (self: any, onRejected: (...any) -> ...any) -> Promise,
-	Finally: (self: any, callback: (status: Status) -> ()) -> Promise,
-	Await: (self: any) -> (boolean, ...any),
-	Expect: (self: any) -> ...any,
-	Cancel: (self: any) -> (),
-	Timeout: (self: any, seconds: number, rejectionValue: any?) -> Promise,
-	GetStatus: (self: any) -> Status,
+--- A promise whose value type isn't tracked: what `Then` and `Catch` return,
+--- since the handler decides the next value. Luau can't express "a Promise of
+--- the handler's return type" here, so annotate it yourself if you need to:
+--- `local p = (a:Then(f) :: any) :: Promise<number>`.
+export type AnyPromise = {
+	Then: (self: AnyPromise, onResolved: ((...any) -> ...any)?, onRejected: ((...any) -> ...any)?) -> AnyPromise,
+	Catch: (self: AnyPromise, onRejected: (...any) -> ...any) -> AnyPromise,
+	Finally: (self: AnyPromise, callback: (status: Status) -> ()) -> AnyPromise,
+	Await: (self: AnyPromise) -> (boolean, ...any),
+	Expect: (self: AnyPromise) -> ...any,
+	Cancel: (self: AnyPromise) -> (),
+	Timeout: (self: AnyPromise, seconds: number, rejectionValue: any?) -> AnyPromise,
+	GetStatus: (self: AnyPromise) -> Status,
+}
+
+--- A promise that resolves with a `T` (its first value). `Promise` on its own
+--- means `Promise<any>`.
+export type Promise<T = any> = {
+	--- `onResolved` receives the value; what it returns becomes the next
+	--- promise's value, so the result is an `AnyPromise`.
+	Then: (
+		self: Promise<T>,
+		onResolved: ((value: T, ...any) -> ...any)?,
+		onRejected: ((reason: any, ...any) -> ...any)?
+	) -> AnyPromise,
+	Catch: (self: Promise<T>, onRejected: (reason: any, ...any) -> ...any) -> AnyPromise,
+	Finally: (self: Promise<T>, callback: (status: Status) -> ()) -> Promise<T>,
+	--- `(true, value)` or `(false, reason)`. The second value is only a `T`
+	--- when the first is true, so it's typed `any`.
+	Await: (self: Promise<T>) -> (boolean, any),
+	--- The value, or raises the rejection.
+	Expect: (self: Promise<T>) -> T,
+	Cancel: (self: Promise<T>) -> (),
+	Timeout: (self: Promise<T>, seconds: number, rejectionValue: any?) -> Promise<T>,
+	GetStatus: (self: Promise<T>) -> Status,
 }
 
 export type RetryOptions = {
@@ -338,11 +364,14 @@ function Promise.new(executor: (
 	return self
 end
 
-function Promise.resolve(...: any): Promise
+-- Passes through every value it's given (including none), so the body takes
+-- `...`; the cast below gives callers the typed signature.
+local function resolvedPromise(...: any): Promise
 	local self = create()
 	resolveWith(self, ...)
 	return self
 end
+Promise.resolve = (resolvedPromise :: any) :: <T>(value: T, ...any) -> Promise<T>
 
 function Promise.reject(...: any): Promise
 	local self = create()
@@ -359,7 +388,7 @@ function Promise.try(callback: (...any) -> ...any, ...: any): Promise
 end
 
 --- Resolves with the elapsed time after `seconds`. Cancelling stops the timer.
-function Promise.delay(seconds: number): Promise
+function Promise.delay(seconds: number): Promise<number>
 	if type(seconds) ~= "number" or seconds ~= seconds or seconds < 0 or seconds == math.huge then
 		error(PREFIX .. "delay expects a non-negative number of seconds", 2)
 	end
@@ -387,9 +416,9 @@ end
 
 --- Resolves with an array of each promise's first value once all resolve.
 --- Rejects as soon as one rejects (or is cancelled) and cancels the rest.
-function Promise.all(promises: { Promise }): Promise
+function Promise.all(promises: { Promise | AnyPromise }): Promise<{ any }>
 	checkPromiseList(promises, "all")
-	local list = table.clone(promises)
+	local list: { any } = table.clone(promises)
 	return Promise.new(function(resolve, reject, onCancel)
 		local count = #list
 		if count == 0 then
@@ -433,9 +462,9 @@ end
 
 --- Resolves once every promise has settled, with an array of
 --- { Status = Status, Value = firstValue }.
-function Promise.allSettled(promises: { Promise }): Promise
+function Promise.allSettled(promises: { Promise | AnyPromise }): Promise<{ { Status: Status, Value: any } }>
 	checkPromiseList(promises, "allSettled")
-	local list = table.clone(promises)
+	local list: { any } = table.clone(promises)
 	return Promise.new(function(resolve)
 		local count = #list
 		local results = table.create(count)
@@ -460,9 +489,9 @@ end
 
 --- Settles like the first promise to resolve or reject, then cancels the
 --- others. Cancelled inputs are ignored unless all of them are cancelled.
-function Promise.race(promises: { Promise }): Promise
+function Promise.race(promises: { Promise | AnyPromise }): Promise
 	checkPromiseList(promises, "race")
-	local list = table.clone(promises)
+	local list: { any } = table.clone(promises)
 	if #list == 0 then
 		error(PREFIX .. "race needs at least one promise", 2)
 	end

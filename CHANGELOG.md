@@ -5,6 +5,12 @@ All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.
 ## Unreleased
 
 ### Changed
+- **Types:** the public API is properly typed.
+  - `Promise<T>` is generic in its value type; `Promise.resolve`, `Promise.delay`, `:Finally`, `:Timeout` and `:Expect` keep the type. `:Then`/`:Catch` return the new `AnyPromise` type.
+  - `Data.Store.new` takes `T` from `Template`: `Store<T>`, `Profile<T>` with a typed `Data`, and `LoadAsync` returns `Promise<Profile<T>>`.
+  - `Config.Adapter` is the new `Data` `Adapter` type and `Config.Logger` is a Debug logger, instead of `any`.
+  - Every exported class type gives its methods a real `self` type (122 signatures) instead of `self: any`.
+  - Existing annotations keep working: `Promise`, `Store` and `Profile` without type arguments mean the old untyped versions.
 - **Data is no longer beta.** Everything that can be checked before a live game has now been verified on real DataStores on real Roblox servers (see [docs/Data.md](docs/Data.md#status-and-verification)). The API is unchanged.
 
 ### Added

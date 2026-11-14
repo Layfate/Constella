@@ -35,6 +35,16 @@ local Signal = require(script.Parent.Parent.Signal)
 local Promise = require(script.Parent.Parent.Promise)
 local Util = require(script.Parent.Util)
 
+-- Type only: `typeof` in a type annotation isn't evaluated at runtime, so
+-- Data still doesn't load Debug unless you pass it a logger.
+type Logger = typeof(require(script.Parent.Parent.Debug).Logger.new(""))
+
+--- What a Data backend provides. `Data.ProfileStoreAdapter` and
+--- `Data.MemoryAdapter` both implement it.
+export type Adapter = {
+	Open: (self: Adapter, name: string, template: { [any]: any }) -> any,
+}
+
 export type ErrorKind =
 	"LoadFailed"
 	| "PlayerLeft"
@@ -50,13 +60,15 @@ export type DataError = {
 	Message: string,
 }
 
-export type Config = {
+--- `T` is the shape of a profile's data, taken from `Template`.
+export type Config<T = { [string]: any }> = {
 	--- Store name, passed to the adapter (DataStore name for ProfileStore).
 	Name: string,
 	--- Default data. New profiles start as a copy; old ones gain missing keys.
-	Template: { [string]: any },
+	--- Its type becomes the type of `profile.Data`.
+	Template: T,
 	--- Backend: Data.ProfileStoreAdapter.new(ProfileStore) or Data.MemoryAdapter.new().
-	Adapter: any,
+	Adapter: Adapter,
 	--- Current data version (integer >= 1). Defaults to 1.
 	Version: number?,
 	--- Migrations[n](data) upgrades version n to n+1. May mutate `data`
@@ -70,21 +82,24 @@ export type Config = {
 	KickOnFailure: boolean?,
 	--- Builds the storage key. Defaults to "Player_<UserId>".
 	Key: ((player: Player) -> string)?,
-	Logger: any?,
+	--- A Constella.Debug logger for load, release and error events.
+	Logger: Logger?,
 	OnError: ((message: string) -> ())?,
 }
 
-export type Profile = {
+--- A loaded player's data. `Data` has the type of the store's `Template`.
+--- Read it freely; change it only with `Set` and `Update`.
+export type Profile<T = { [string]: any }> = {
 	Player: Player,
 	Key: string,
-	Data: { [string]: any },
+	Data: T,
 	Changed: Signal.Signal<string, any, any>,
-	Get: (self: any, key: string) -> any,
-	Set: (self: any, key: string, value: any) -> (),
-	Update: (self: any, key: string, updater: (current: any) -> any) -> (),
-	Save: (self: any) -> boolean,
-	IsActive: (self: any) -> boolean,
-	Release: (self: any) -> (),
+	Get: (self: Profile<T>, key: string) -> any,
+	Set: (self: Profile<T>, key: string, value: any) -> (),
+	Update: (self: Profile<T>, key: string, updater: (current: any) -> any) -> (),
+	Save: (self: Profile<T>) -> boolean,
+	IsActive: (self: Profile<T>) -> boolean,
+	Release: (self: Profile<T>) -> (),
 }
 
 export type Stats = {
@@ -95,16 +110,17 @@ export type Stats = {
 	SessionsLost: number,
 }
 
-export type Store = {
+export type Store<T = { [string]: any }> = {
 	Name: string,
-	Loaded: Signal.Signal<Player, Profile>,
+	Loaded: Signal.Signal<Player, Profile<T>>,
 	Released: Signal.Signal<Player>,
-	LoadAsync: (self: any, player: Player) -> any,
-	Get: (self: any, player: Player) -> Profile?,
-	Release: (self: any, player: Player) -> (),
-	BindPlayers: (self: any) -> (),
-	Shutdown: (self: any, budgetSeconds: number?) -> boolean,
-	GetStats: (self: any) -> Stats,
+	--- Resolves with the profile, or rejects with a `DataError`.
+	LoadAsync: (self: Store<T>, player: Player) -> Promise.Promise<Profile<T>>,
+	Get: (self: Store<T>, player: Player) -> Profile<T>?,
+	Release: (self: Store<T>, player: Player) -> (),
+	BindPlayers: (self: Store<T>) -> (),
+	Shutdown: (self: Store<T>, budgetSeconds: number?) -> boolean,
+	GetStats: (self: Store<T>) -> Stats,
 }
 
 local PREFIX = "[Constella.Data] "
@@ -498,7 +514,7 @@ end
 
 local Store = {}
 
-function Store.new(config: Config): Store
+function Store.new<T>(config: Config<T>): Store<T>
 	if RunService:IsRunning() and not RunService:IsServer() then
 		error(PREFIX .. "Data.Store can only be used on the server", 2)
 	end
@@ -578,7 +594,7 @@ function Store.new(config: Config): Store
 		_ending = {},
 		_stats = { LoadsSucceeded = 0, LoadsFailed = 0, SessionsLost = 0 },
 	}, StoreClass)
-	return (self :: any) :: Store
+	return (self :: any) :: Store<T>
 end
 
 Store.VERSION_KEY = VERSION_KEY

@@ -56,16 +56,16 @@ export type Context = {
 	--- Destroyed automatically after Stop (or after a failed startup).
 	Cleanup: Cleanup.Cleanup,
 	--- Returns a declared dependency. Undeclared names raise an error.
-	Get: (self: any, name: string) -> any,
+	Get: (self: Context, name: string) -> any,
 }
 
 export type Definition = {
 	Name: string,
 	Dependencies: { string }?,
 	Environment: Environment?,
-	Init: ((self: any, context: Context) -> ())?,
-	Start: ((self: any, context: Context) -> ())?,
-	Stop: ((self: any, context: Context) -> ())?,
+	Init: ((self: Definition, context: Context) -> ())?,
+	Start: ((self: Definition, context: Context) -> ())?,
+	Stop: ((self: Definition, context: Context) -> ())?,
 	--- Make App:Start wait for this definition's Start to finish (even if it
 	--- yields). Any Start error then fails startup. Defaults to false.
 	WaitForStart: boolean?,
@@ -93,15 +93,15 @@ export type App = {
 	Environment: "Server" | "Client",
 	Started: Signal.Signal<()>,
 	Stopped: Signal.Signal<()>,
-	Add: <T>(self: any, definition: T) -> T,
-	AddModules: (self: any, container: Instance, options: AddModulesOptions?) -> { any },
-	Get: (self: any, name: string) -> any,
-	Has: (self: any, name: string) -> boolean,
-	GetOrder: (self: any) -> { string },
-	GetState: (self: any) -> AppState,
-	Start: (self: any) -> (),
-	AwaitStart: (self: any) -> (),
-	Stop: (self: any) -> (),
+	Add: <T>(self: App, definition: T) -> T,
+	AddModules: (self: App, container: Instance, options: AddModulesOptions?) -> { any },
+	Get: (self: App, name: string) -> any,
+	Has: (self: App, name: string) -> boolean,
+	GetOrder: (self: App) -> { string },
+	GetState: (self: App) -> AppState,
+	Start: (self: App) -> (),
+	AwaitStart: (self: App) -> (),
+	Stop: (self: App) -> (),
 }
 
 local PREFIX = "[Constella.App] "

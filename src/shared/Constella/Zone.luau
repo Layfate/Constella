@@ -48,14 +48,14 @@ export type Options = {
 export type Zone = {
 	Entered: Signal.Signal<any>,
 	Exited: Signal.Signal<any>,
-	Track: (self: any, item: any, getPosition: (() -> Vector3?)?) -> (),
-	Untrack: (self: any, item: any) -> (),
-	TrackPlayers: (self: any) -> (),
-	Contains: (self: any, position: Vector3, padding: number?) -> boolean,
-	IsInside: (self: any, item: any) -> boolean,
-	GetInside: (self: any) -> { any },
-	Step: (self: any) -> (),
-	Destroy: (self: any) -> (),
+	Track: (self: Zone, item: any, getPosition: (() -> Vector3?)?) -> (),
+	Untrack: (self: Zone, item: any) -> (),
+	TrackPlayers: (self: Zone) -> (),
+	Contains: (self: Zone, position: Vector3, padding: number?) -> boolean,
+	IsInside: (self: Zone, item: any) -> boolean,
+	GetInside: (self: Zone) -> { any },
+	Step: (self: Zone) -> (),
+	Destroy: (self: Zone) -> (),
 }
 
 local PREFIX = "[Constella.Zone] "

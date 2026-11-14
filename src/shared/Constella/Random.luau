@@ -46,11 +46,11 @@ export type Chance<T> = {
 }
 
 export type LootTable<T> = {
-	Roll: (self: any, rng: any?, modifiers: Modifiers?) -> T,
-	RollMany: (self: any, count: number, rng: any?, modifiers: Modifiers?) -> { T },
-	GetChance: (self: any, value: T, modifiers: Modifiers?) -> number,
-	GetChances: (self: any, modifiers: Modifiers?) -> { Chance<T> },
-	GetEntries: (self: any) -> { Entry<T> },
+	Roll: (self: LootTable<T>, rng: any?, modifiers: Modifiers?) -> T,
+	RollMany: (self: LootTable<T>, count: number, rng: any?, modifiers: Modifiers?) -> { T },
+	GetChance: (self: LootTable<T>, value: T, modifiers: Modifiers?) -> number,
+	GetChances: (self: LootTable<T>, modifiers: Modifiers?) -> { Chance<T> },
+	GetEntries: (self: LootTable<T>) -> { Entry<T> },
 }
 
 local PREFIX = "[Constella.Random] "

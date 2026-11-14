@@ -26,21 +26,21 @@ local Signal = require(script.Parent.Signal)
 export type Connection = Signal.Connection
 
 export type Value<T> = {
-	Get: (self: any) -> T,
-	Set: (self: any, value: T) -> (),
-	Update: (self: any, updater: (current: T) -> T) -> (),
-	Subscribe: (self: any, callback: (newValue: T, oldValue: T) -> ()) -> Connection,
-	Observe: (self: any, callback: (value: T) -> ()) -> Connection,
-	Destroy: (self: any) -> (),
-	IsDestroyed: (self: any) -> boolean,
+	Get: (self: Value<T>) -> T,
+	Set: (self: Value<T>, value: T) -> (),
+	Update: (self: Value<T>, updater: (current: T) -> T) -> (),
+	Subscribe: (self: Value<T>, callback: (newValue: T, oldValue: T) -> ()) -> Connection,
+	Observe: (self: Value<T>, callback: (value: T) -> ()) -> Connection,
+	Destroy: (self: Value<T>) -> (),
+	IsDestroyed: (self: Value<T>) -> boolean,
 }
 
 export type Computed<T> = {
-	Get: (self: any) -> T,
-	Subscribe: (self: any, callback: (newValue: T, oldValue: T) -> ()) -> Connection,
-	Observe: (self: any, callback: (value: T) -> ()) -> Connection,
-	Destroy: (self: any) -> (),
-	IsDestroyed: (self: any) -> boolean,
+	Get: (self: Computed<T>) -> T,
+	Subscribe: (self: Computed<T>, callback: (newValue: T, oldValue: T) -> ()) -> Connection,
+	Observe: (self: Computed<T>, callback: (value: T) -> ()) -> Connection,
+	Destroy: (self: Computed<T>) -> (),
+	IsDestroyed: (self: Computed<T>) -> boolean,
 }
 
 export type Options<T> = {

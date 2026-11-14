@@ -30,15 +30,15 @@ export type LoggerOptions = {
 
 export type Logger = {
 	Name: string,
-	Trace: (self: any, message: string | () -> string, fields: { [string]: any }?) -> (),
-	Debug: (self: any, message: string | () -> string, fields: { [string]: any }?) -> (),
-	Info: (self: any, message: string | () -> string, fields: { [string]: any }?) -> (),
-	Warn: (self: any, message: string | () -> string, fields: { [string]: any }?) -> (),
-	Error: (self: any, message: string | () -> string, fields: { [string]: any }?) -> (),
-	SetLevel: (self: any, level: Level) -> (),
-	GetLevel: (self: any) -> Level,
-	IsEnabled: (self: any, level: Level) -> boolean,
-	Child: (self: any, name: string) -> Logger,
+	Trace: (self: Logger, message: string | () -> string, fields: { [string]: any }?) -> (),
+	Debug: (self: Logger, message: string | () -> string, fields: { [string]: any }?) -> (),
+	Info: (self: Logger, message: string | () -> string, fields: { [string]: any }?) -> (),
+	Warn: (self: Logger, message: string | () -> string, fields: { [string]: any }?) -> (),
+	Error: (self: Logger, message: string | () -> string, fields: { [string]: any }?) -> (),
+	SetLevel: (self: Logger, level: Level) -> (),
+	GetLevel: (self: Logger) -> Level,
+	IsEnabled: (self: Logger, level: Level) -> boolean,
+	Child: (self: Logger, name: string) -> Logger,
 }
 
 export type Observation = {
@@ -55,13 +55,13 @@ export type MetricsSnapshot = {
 }
 
 export type Metrics = {
-	Increment: (self: any, name: string, amount: number?) -> (),
-	Observe: (self: any, name: string, value: number) -> (),
-	Time: (self: any, name: string, fn: (...any) -> ...any, ...any) -> ...any,
-	Snapshot: (self: any) -> MetricsSnapshot,
-	Reset: (self: any) -> (),
-	SetEnabled: (self: any, enabled: boolean) -> (),
-	IsEnabled: (self: any) -> boolean,
+	Increment: (self: Metrics, name: string, amount: number?) -> (),
+	Observe: (self: Metrics, name: string, value: number) -> (),
+	Time: (self: Metrics, name: string, fn: (...any) -> ...any, ...any) -> ...any,
+	Snapshot: (self: Metrics) -> MetricsSnapshot,
+	Reset: (self: Metrics) -> (),
+	SetEnabled: (self: Metrics, enabled: boolean) -> (),
+	IsEnabled: (self: Metrics) -> boolean,
 }
 
 local PREFIX = "[Constella.Debug] "

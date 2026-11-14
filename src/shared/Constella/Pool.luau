@@ -46,14 +46,14 @@ export type Stats = {
 }
 
 export type Pool<T> = {
-	Acquire: (self: any) -> T,
-	TryAcquire: (self: any) -> T?,
-	Release: (self: any, object: T) -> (),
-	IsActive: (self: any, object: T) -> boolean,
-	Prewarm: (self: any, count: number) -> (),
-	Clear: (self: any) -> (),
-	GetStats: (self: any) -> Stats,
-	Destroy: (self: any) -> (),
+	Acquire: (self: Pool<T>) -> T,
+	TryAcquire: (self: Pool<T>) -> T?,
+	Release: (self: Pool<T>, object: T) -> (),
+	IsActive: (self: Pool<T>, object: T) -> boolean,
+	Prewarm: (self: Pool<T>, count: number) -> (),
+	Clear: (self: Pool<T>) -> (),
+	GetStats: (self: Pool<T>) -> Stats,
+	Destroy: (self: Pool<T>) -> (),
 }
 
 type InstancesOptions = { Reset: ((any) -> ())?, MaxIdle: number?, MaxActive: number?, Prewarm: number? }

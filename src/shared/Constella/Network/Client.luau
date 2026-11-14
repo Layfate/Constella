@@ -30,9 +30,9 @@ export type ClientOptions = {
 
 export type ClientEvent = {
 	Name: string,
-	Fire: (self: any, ...any) -> (),
-	Connect: (self: any, handler: (...any) -> ()) -> RBXScriptConnection,
-	Destroy: (self: any) -> (),
+	Fire: (self: ClientEvent, ...any) -> (),
+	Connect: (self: ClientEvent, handler: (...any) -> ()) -> RBXScriptConnection,
+	Destroy: (self: ClientEvent) -> (),
 }
 
 export type ClientFunction = {
@@ -40,9 +40,9 @@ export type ClientFunction = {
 	--- Returns (true, ...results) or (false, code). Codes: "Timeout",
 	--- "TooManyRequests", "RateLimited", "Rejected", "Unavailable",
 	--- "ServerError", "NetworkError".
-	Invoke: (self: any, ...any) -> (boolean, ...any),
+	Invoke: (self: ClientFunction, ...any) -> (boolean, ...any),
 	--- Calls that have not returned from the server yet (including timed-out ones).
-	GetInFlight: (self: any) -> number,
+	GetInFlight: (self: ClientFunction) -> number,
 }
 
 export type FunctionOptions = {
@@ -55,9 +55,9 @@ export type FunctionOptions = {
 
 export type Client = {
 	Namespace: string,
-	Event: (self: any, name: string) -> ClientEvent,
-	Function: (self: any, name: string, options: FunctionOptions?) -> ClientFunction,
-	Destroy: (self: any) -> (),
+	Event: (self: Client, name: string) -> ClientEvent,
+	Function: (self: Client, name: string, options: FunctionOptions?) -> ClientFunction,
+	Destroy: (self: Client) -> (),
 }
 
 local PREFIX = "[Constella.Network] "
