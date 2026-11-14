@@ -2,8 +2,11 @@
 -- Play-mode integration test, server half. Studio only.
 -- The client half (tests/client/NetworkIntegration.client.luau) sends valid,
 -- malformed, forged and excessive requests through real remotes, then calls
--- Verify. The server compares what it actually accepted and rejected with
--- what it expected, prints PASS/FAIL and stores the result as attributes.
+-- Verify. The server compares what it actually accepted and rejected for
+-- that player with what it expected, prints PASS/FAIL and stores the result
+-- as attributes. Counts are kept per player, so the test also works with
+-- several clients (Server & Clients mode), where each player has its own
+-- rate limit.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -16,7 +19,33 @@ local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChil
 local Network = Constella.Network
 local Check = Network.Check
 
-local server = Network.Server.new("ConstellaIntegration", { OnError = function() end })
+-- tallies[player][endpoint] = { Accepted = n, Rejected = { [reason] = n } }
+local tallies = {}
+local function tally(player, endpoint)
+	local byEndpoint = tallies[player]
+	if byEndpoint == nil then
+		byEndpoint = {}
+		tallies[player] = byEndpoint
+	end
+	local entry = byEndpoint[endpoint]
+	if entry == nil then
+		entry = { Accepted = 0, Rejected = {} }
+		byEndpoint[endpoint] = entry
+	end
+	return entry
+end
+local function accepted(player, endpoint)
+	local entry = tally(player, endpoint)
+	entry.Accepted += 1
+end
+
+local server = Network.Server.new("ConstellaIntegration", {
+	OnError = function() end,
+	OnReject = function(player, endpoint, reason)
+		local entry = tally(player, endpoint)
+		entry.Rejected[reason] = (entry.Rejected[reason] or 0) + 1
+	end,
+})
 
 local echoReply = server:Event("EchoReply")
 local echo = server:Event("Echo", {
@@ -24,16 +53,21 @@ local echo = server:Event("Echo", {
 	RateLimit = { Count = 100, Per = 1 },
 })
 echo:Connect(function(player, text, times)
+	accepted(player, "Echo")
 	echoReply:Fire(player, string.rep(text, times))
 end)
 
 server:Event("ServerOnly")
-server:Event("Limited", { Schema = {}, RateLimit = { Count = 3, Per = 60 } })
+server:Event("Limited", { Schema = {}, RateLimit = { Count = 3, Per = 60 } }):Connect(function(player)
+	accepted(player, "Limited")
+end)
 
-server:Function("Add", { Schema = { Check.number(), Check.number() } }):SetHandler(function(_, a, b)
+server:Function("Add", { Schema = { Check.number(), Check.number() } }):SetHandler(function(player, a, b)
+	accepted(player, "Add")
 	return a + b
 end)
-server:Function("Boom", { Schema = {} }):SetHandler(function()
+server:Function("Boom", { Schema = {} }):SetHandler(function(player)
+	accepted(player, "Boom")
 	error("internal detail that must not reach the client")
 end)
 
@@ -45,11 +79,10 @@ local EXPECTED = {
 	Boom = { Accepted = 1, Rejected = { HandlerError = 1 } },
 }
 
-local function compare(): (boolean, string)
-	local stats = server:GetStats()
+local function compare(player): (boolean, string)
 	local problems = {}
 	for name, expected in EXPECTED do
-		local actual = stats[name]
+		local actual = tally(player, name)
 		if actual.Accepted ~= expected.Accepted then
 			table.insert(problems, ("%s Accepted %d, expected %d"):format(name, actual.Accepted, expected.Accepted))
 		end
@@ -71,16 +104,22 @@ local function compare(): (boolean, string)
 	return #problems == 0, table.concat(problems, "; ")
 end
 
-server:Function("Verify", { Schema = {} }):SetHandler(function()
+local verified, failedPlayers = 0, {}
+server:Function("Verify", { Schema = {} }):SetHandler(function(player)
 	-- Events and function calls travel separately; give queued events a moment.
 	task.wait(0.5)
-	local passed, problems = compare()
-	script:SetAttribute("Passed", passed)
-	script:SetAttribute("Problems", problems)
+	local passed, problems = compare(player)
+	verified += 1
+	if not passed then
+		table.insert(failedPlayers, player.Name .. ": " .. problems)
+	end
+	script:SetAttribute("Verified", verified)
+	script:SetAttribute("Passed", #failedPlayers == 0)
+	script:SetAttribute("Problems", table.concat(failedPlayers, " | "))
 	if passed then
-		print("[Constella integration] Network PASS")
+		print(("[Constella integration] Network PASS (%s)"):format(player.Name))
 	else
-		warn("[Constella integration] Network FAIL: " .. problems)
+		warn(("[Constella integration] Network FAIL (%s): %s"):format(player.Name, problems))
 	end
 	return passed, problems
 end)
