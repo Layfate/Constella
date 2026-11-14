@@ -9,12 +9,12 @@ Measured results, including where Constella loses. They come from one machine, s
 | Date | 2026-11-14 |
 | Place | **A different Studio place from the previous run.** This run used a published test place with only Constella's scripts and the comparison libraries in it. The previous run (2026-11-13) used the unpublished dev place. |
 | Engine | Roblox Studio 0.747.0.7471481 (Edit mode, Windows), nothing else running |
-| Code | Constella 0.2.0, with the Signal dispatch change described under [History](#history). The previous run measured the version before it. |
-| Tests | 234 of 234 unit tests passed in the same place, on the same code, before the benchmark run. |
+| Code | Constella 0.2.0, loaded from the release `Constella.rbxm`, with the Signal dispatch change described under [History](#history). The previous run measured the version before it. |
+| Tests | 238 of 238 unit tests passed in the same place, on the same package, before the benchmark run. |
 | Speed method | The whole suite ran **5 times**. In each run, a case runs once to warm up, then 5 timed trials with a yield between them; the run's result is the median of those trials. The table shows the **median across the 5 runs**, plus the best and worst run. Every run's result is listed under [All 5 runs](#all-5-runs). |
 | Memory method | Heap growth (`gcinfo`) while building 5,000 objects, repeated 21 times. Garbage collection during a build can only make a sample *smaller*, so the 80th percentile is reported; the upper samples are the uninterrupted ones. Repeated rounds gave identical results. |
 | Leak method | Objects go into a weak-keyed table and are released while their owner stays alive. The check then waits (creating throwaway garbage to keep the collector running) until the garbage collector has freed them. |
-| Compared with | [sleitnick/signal](https://github.com/Sleitnick/RbxUtil/tree/main/modules/signal) 2.0.3 (GoodSignal-style) and [sleitnick/trove](https://github.com/Sleitnick/RbxUtil/tree/main/modules/trove) 1.8.0, both from RbxUtil commit `31f9120fca02` |
+| Compared with | [sleitnick/signal](https://github.com/Sleitnick/RbxUtil/tree/main/modules/signal) 2.0.3 (GoodSignal-style) and [sleitnick/trove](https://github.com/Sleitnick/RbxUtil/tree/main/modules/trove) 1.8.0, both from RbxUtil commit `31f9120fca02`, plus hand-written baselines for Random |
 
 Compare implementations **within one run**, not across runs. Absolute times change with the machine and the place (see [Why the two runs differ](#why-the-two-runs-differ)).
 
@@ -22,59 +22,77 @@ Compare implementations **within one run**, not across runs. Absolute times chan
 
 Constella.Signal catches every listener's errors (`xpcall`, reported through `OnError`), so one failing listener can't break the others. sleitnick/signal doesn't catch them. To compare the same guarantee, the suite also runs sleitnick/signal with each listener wrapped in `xpcall`. That's the fair comparison, and it's listed first below.
 
+For Random, `Random.choose` checks every entry on every call, so comparing it with a precomputed table mostly measures that validation. The two hand-written baselines skip validation entirely, so they compare the selection algorithm itself.
+
 ## Speed
 
-Median µs per operation. The last column is the previous run's median, from the other place, for comparison.
+Median µs per operation. The last column is the previous run's median, from the other place, for comparison (— means the case is new).
 
 | Group | Case | Implementation | Median | Best run | Worst run | Previous (2026-11-13) |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| Signal | Connect + Disconnect | Constella.Signal | 0.295 | 0.290 | 0.304 | 0.307 |
-| Signal | Connect + Disconnect | sleitnick/signal + xpcall (same guarantee) | 0.221 | 0.186 | 0.232 | 0.201 |
-| Signal | Connect + Disconnect | sleitnick/signal (no error isolation) | 0.209 | 0.181 | 0.235 | 0.183 |
-| Signal | Fire, 1 listener | Constella.Signal | 0.407 | 0.399 | 0.426 | 0.458 |
-| Signal | Fire, 1 listener | sleitnick/signal + xpcall (same guarantee) | 0.370 | 0.366 | 0.374 | 0.370 |
-| Signal | Fire, 1 listener | sleitnick/signal (no error isolation) | 0.328 | 0.319 | 0.334 | 0.324 |
-| Signal | Fire, 10 listeners | Constella.Signal | 3.594 | 3.567 | 3.611 | 3.793 |
-| Signal | Fire, 10 listeners | sleitnick/signal + xpcall (same guarantee) | 3.369 | 3.348 | 3.381 | 3.497 |
-| Signal | Fire, 10 listeners | sleitnick/signal (no error isolation) | 2.871 | 2.845 | 2.908 | 2.885 |
-| Cleanup | Add + Clean 100 functions | Constella.Cleanup | 16.402 | 16.163 | 20.020 | 19.215 |
-| Cleanup | Add + Clean 100 functions | sleitnick/trove | 160.057 | 148.964 | 176.374 | 151.731 |
-| Cleanup | Connect + Clean 100 RBXScriptConnections | Constella.Cleanup | 126.094 | 122.616 | 159.272 | 144.129 |
-| Cleanup | Connect + Clean 100 RBXScriptConnections | sleitnick/trove | 127.903 | 121.900 | 165.118 | 145.321 |
-| Pool | Spawn + despawn a Part | Constella.Pool | 30.714 | 30.356 | 31.092 | 19.932 |
-| Pool | Spawn + despawn a Part | Clone + Destroy (no pool) | 51.948 | 51.085 | 63.240 | 38.895 |
-| Network | Accept a valid request (all checks) | Constella.Network | 1.925 | 1.770 | 1.944 | 2.013 |
-| Network | Reject a forged request | Constella.Network | 1.476 | 1.466 | 1.516 | 1.562 |
-| Random | Weighted roll, 100 entries | `lootTable:Roll` (precomputed) | 0.247 | 0.246 | 0.254 | 0.261 |
-| Random | Weighted roll, 100 entries | `Random.choose` (validates every call) | 24.817 | 24.466 | 26.666 | 26.535 |
-| State | Set with 1 subscriber | Constella.State | 1.023 | 0.976 | 1.033 | 1.103 |
+| Signal | Connect + Disconnect | Constella.Signal | 0.304 | 0.242 | 0.425 | 0.307 |
+| Signal | Connect + Disconnect | sleitnick/signal + xpcall (same guarantee) | 0.188 | 0.181 | 0.265 | 0.201 |
+| Signal | Connect + Disconnect | sleitnick/signal (no error isolation) | 0.195 | 0.124 | 0.317 | 0.183 |
+| Signal | Fire, 1 listener | Constella.Signal | 0.409 | 0.405 | 0.518 | 0.458 |
+| Signal | Fire, 1 listener | sleitnick/signal + xpcall (same guarantee) | 0.375 | 0.372 | 0.403 | 0.370 |
+| Signal | Fire, 1 listener | sleitnick/signal (no error isolation) | 0.328 | 0.319 | 0.394 | 0.324 |
+| Signal | Fire, 10 listeners | Constella.Signal | 3.644 | 3.605 | 4.199 | 3.793 |
+| Signal | Fire, 10 listeners | sleitnick/signal + xpcall (same guarantee) | 3.401 | 3.378 | 3.627 | 3.497 |
+| Signal | Fire, 10 listeners | sleitnick/signal (no error isolation) | 2.933 | 2.864 | 3.433 | 2.885 |
+| Signal | Fire, 100 listeners | Constella.Signal | 36.343 | 35.311 | 41.783 | — |
+| Signal | Fire, 100 listeners | sleitnick/signal + xpcall (same guarantee) | 34.544 | 33.676 | 40.828 | — |
+| Signal | Fire, 100 listeners | sleitnick/signal (no error isolation) | 28.756 | 28.175 | 30.090 | — |
+| Signal | Fire, 1,000 listeners | Constella.Signal | 360.032 | 355.666 | 385.890 | — |
+| Signal | Fire, 1,000 listeners | sleitnick/signal + xpcall (same guarantee) | 341.828 | 338.894 | 387.826 | — |
+| Signal | Fire, 1,000 listeners | sleitnick/signal (no error isolation) | 284.360 | 280.564 | 325.056 | — |
+| Cleanup | Add + Clean 100 functions | Constella.Cleanup | 18.044 | 17.632 | 20.446 | 19.215 |
+| Cleanup | Add + Clean 100 functions | sleitnick/trove | 157.699 | 157.069 | 188.677 | 151.731 |
+| Cleanup | Connect + Clean 100 RBXScriptConnections | Constella.Cleanup | 134.004 | 129.228 | 160.907 | 144.129 |
+| Cleanup | Connect + Clean 100 RBXScriptConnections | sleitnick/trove | 144.062 | 141.297 | 176.172 | 145.321 |
+| Pool | Spawn + despawn a Part | Constella.Pool | 31.001 | 30.312 | 36.372 | 19.932 |
+| Pool | Spawn + despawn a Part | Clone + Destroy (no pool) | 52.516 | 51.683 | 65.677 | 38.895 |
+| Network | Accept a valid request (all checks) | Constella.Network | 2.034 | 1.782 | 2.063 | 2.013 |
+| Network | Reject a forged request | Constella.Network | 1.569 | 1.515 | 2.136 | 1.562 |
+| Random | Weighted roll, 100 entries | `lootTable:Roll` (precomputed, binary search) | 0.252 | 0.251 | 0.263 | 0.261 |
+| Random | Weighted roll, 100 entries | Hand-written: precomputed totals, linear scan | 0.522 | 0.502 | 0.582 | — |
+| Random | Weighted roll, 100 entries | Hand-written: sum, then linear scan (each call) | 1.358 | 1.341 | 1.611 | — |
+| Random | Weighted roll, 100 entries | `Random.choose` (validates every call) | 25.173 | 24.949 | 28.195 | 26.535 |
+| State | Set with 1 subscriber | Constella.State | 1.020 | 0.948 | 1.272 | 1.103 |
 
 ### All 5 runs
 
-Each value is that run's median of 5 timed trials, in µs per operation, in the order the runs happened.
+Each value is that run's median of 5 timed trials, in µs per operation, in the order the runs happened. Run 4 was slower for almost every case, which points to the machine rather than the code; the medians aren't affected by one slow run.
 
 | Case | Implementation | Run 1 | Run 2 | Run 3 | Run 4 | Run 5 |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Signal: Connect + Disconnect | Constella.Signal | 0.304 | 0.295 | 0.290 | 0.296 | 0.295 |
-| Signal: Connect + Disconnect | sleitnick/signal + xpcall | 0.186 | 0.228 | 0.221 | 0.232 | 0.221 |
-| Signal: Connect + Disconnect | sleitnick/signal | 0.235 | 0.202 | 0.209 | 0.181 | 0.229 |
-| Signal: Fire, 1 listener | Constella.Signal | 0.426 | 0.415 | 0.407 | 0.399 | 0.404 |
-| Signal: Fire, 1 listener | sleitnick/signal + xpcall | 0.370 | 0.374 | 0.371 | 0.368 | 0.366 |
-| Signal: Fire, 1 listener | sleitnick/signal | 0.331 | 0.334 | 0.319 | 0.328 | 0.322 |
-| Signal: Fire, 10 listeners | Constella.Signal | 3.573 | 3.594 | 3.611 | 3.567 | 3.598 |
-| Signal: Fire, 10 listeners | sleitnick/signal + xpcall | 3.355 | 3.373 | 3.369 | 3.348 | 3.381 |
-| Signal: Fire, 10 listeners | sleitnick/signal | 2.908 | 2.893 | 2.871 | 2.845 | 2.866 |
-| Cleanup: Add + Clean 100 functions | Constella.Cleanup | 16.316 | 20.020 | 16.402 | 16.163 | 19.053 |
-| Cleanup: Add + Clean 100 functions | sleitnick/trove | 160.057 | 162.027 | 153.551 | 148.964 | 176.374 |
-| Cleanup: Connect + Clean 100 RBXScriptConnections | Constella.Cleanup | 126.094 | 124.941 | 122.616 | 159.272 | 144.576 |
-| Cleanup: Connect + Clean 100 RBXScriptConnections | sleitnick/trove | 165.118 | 164.333 | 121.900 | 127.903 | 126.367 |
-| Pool: Spawn + despawn a Part | Constella.Pool | 30.795 | 31.092 | 30.714 | 30.356 | 30.476 |
-| Pool: Spawn + despawn a Part | Clone + Destroy (no pool) | 52.554 | 63.240 | 51.085 | 51.899 | 51.948 |
-| Network: Accept a valid request (all checks) | Constella.Network | 1.770 | 1.944 | 1.873 | 1.925 | 1.940 |
-| Network: Reject a forged request | Constella.Network | 1.476 | 1.477 | 1.466 | 1.516 | 1.468 |
-| Random: Weighted roll, 100 entries | `lootTable:Roll` | 0.246 | 0.247 | 0.247 | 0.254 | 0.250 |
-| Random: Weighted roll, 100 entries | `Random.choose` | 24.960 | 24.466 | 24.584 | 26.666 | 24.817 |
-| State: Set with 1 subscriber | Constella.State | 1.023 | 1.033 | 0.976 | 1.001 | 1.031 |
+| Signal: Connect + Disconnect | Constella.Signal | 0.242 | 0.304 | 0.367 | 0.425 | 0.295 |
+| Signal: Connect + Disconnect | sleitnick/signal + xpcall | 0.188 | 0.183 | 0.181 | 0.265 | 0.252 |
+| Signal: Connect + Disconnect | sleitnick/signal | 0.254 | 0.124 | 0.182 | 0.317 | 0.195 |
+| Signal: Fire, 1 listener | Constella.Signal | 0.409 | 0.405 | 0.410 | 0.518 | 0.406 |
+| Signal: Fire, 1 listener | sleitnick/signal + xpcall | 0.372 | 0.372 | 0.375 | 0.403 | 0.375 |
+| Signal: Fire, 1 listener | sleitnick/signal | 0.328 | 0.319 | 0.336 | 0.394 | 0.324 |
+| Signal: Fire, 10 listeners | Constella.Signal | 3.605 | 3.609 | 3.776 | 4.199 | 3.644 |
+| Signal: Fire, 10 listeners | sleitnick/signal + xpcall | 3.378 | 3.391 | 3.435 | 3.627 | 3.401 |
+| Signal: Fire, 10 listeners | sleitnick/signal | 2.864 | 2.869 | 3.433 | 3.207 | 2.933 |
+| Signal: Fire, 100 listeners | Constella.Signal | 35.438 | 35.311 | 36.343 | 41.783 | 37.013 |
+| Signal: Fire, 100 listeners | sleitnick/signal + xpcall | 33.676 | 33.875 | 34.544 | 37.189 | 40.828 |
+| Signal: Fire, 100 listeners | sleitnick/signal | 28.175 | 28.526 | 29.272 | 30.090 | 28.756 |
+| Signal: Fire, 1,000 listeners | Constella.Signal | 356.426 | 355.666 | 366.128 | 385.890 | 360.032 |
+| Signal: Fire, 1,000 listeners | sleitnick/signal + xpcall | 340.932 | 341.828 | 362.366 | 387.826 | 338.894 |
+| Signal: Fire, 1,000 listeners | sleitnick/signal | 283.108 | 280.564 | 292.506 | 325.056 | 284.360 |
+| Cleanup: Add + Clean 100 functions | Constella.Cleanup | 17.911 | 18.044 | 17.632 | 20.446 | 20.315 |
+| Cleanup: Add + Clean 100 functions | sleitnick/trove | 157.699 | 157.069 | 174.574 | 188.677 | 157.406 |
+| Cleanup: Connect + Clean 100 RBXScriptConnections | Constella.Cleanup | 129.228 | 130.797 | 160.907 | 142.816 | 134.004 |
+| Cleanup: Connect + Clean 100 RBXScriptConnections | sleitnick/trove | 162.752 | 144.062 | 176.172 | 143.904 | 141.297 |
+| Pool: Spawn + despawn a Part | Constella.Pool | 30.633 | 30.312 | 36.372 | 32.842 | 31.001 |
+| Pool: Spawn + despawn a Part | Clone + Destroy (no pool) | 52.516 | 51.683 | 65.677 | 63.006 | 52.341 |
+| Network: Accept a valid request (all checks) | Constella.Network | 2.034 | 1.813 | 2.063 | 2.040 | 1.782 |
+| Network: Reject a forged request | Constella.Network | 1.569 | 1.539 | 2.136 | 1.583 | 1.515 |
+| Random: Weighted roll, 100 entries | `lootTable:Roll` | 0.252 | 0.251 | 0.258 | 0.263 | 0.251 |
+| Random: Weighted roll, 100 entries | Hand-written: precomputed totals, linear scan | 0.502 | 0.522 | 0.582 | 0.522 | 0.515 |
+| Random: Weighted roll, 100 entries | Hand-written: sum, then linear scan | 1.358 | 1.341 | 1.611 | 1.406 | 1.350 |
+| Random: Weighted roll, 100 entries | `Random.choose` | 25.142 | 24.949 | 28.195 | 26.088 | 25.173 |
+| State: Set with 1 subscriber | Constella.State | 1.020 | 0.948 | 1.272 | 1.066 | 1.007 |
 
 ## Memory
 
@@ -100,23 +118,22 @@ The unit tests include the same kind of check, so a leak fails the test suite an
 
 ## What the numbers say
 
-- **Signal, like for like, is a little slower than sleitnick/signal.**
-  - `Fire` is about 7–10% slower (0.407 vs 0.370 µs with 1 listener, 3.59 vs 3.37 µs with 10). In the previous run, before the dispatch change, it was 8–24% slower.
-  - `Connect`+`Disconnect` is about 1.3× slower (0.30 vs 0.22 µs). That's the cost of guarantees sleitnick/signal doesn't make: checks for a destroyed signal and a non-function callback, listeners called in connection order, `O(1)` `Disconnect` (sleitnick/signal walks its list to find the previous node), a connection count, and snapshot `Fire`.
+- **Signal, like for like, is a little slower than sleitnick/signal, and the gap stays small as listeners grow.**
+  - `Fire` costs about 0.36 µs per listener against 0.34 µs: 9% slower with 1 listener, 7% with 10, and 5% with 100 or 1,000. The cost per listener is constant, so firing to 1,000 listeners takes about 0.36 ms.
+  - `Connect`+`Disconnect` is about 1.6× slower (0.30 vs 0.19 µs). That's the cost of guarantees sleitnick/signal doesn't make: checks for a destroyed signal and a non-function callback, listeners called in connection order, `O(1)` `Disconnect` (sleitnick/signal walks its list to find the previous node), a connection count, and snapshot `Fire`. These are the noisiest rows in the report.
   - It uses **less memory** per connection (160 vs 176 bytes).
   - Without error isolation, sleitnick/signal is faster still. That's the cost of catching errors, and Constella always pays it.
-- **Cleanup is about 10× faster than Trove for functions, and uses half the memory.** For RBXScriptConnections the two are even (126 vs 128 µs), because the engine's own Disconnect dominates.
+- **Cleanup is about 9× faster than Trove for functions, and uses half the memory.** For RBXScriptConnections they're close (134 vs 144 µs), because the engine's own Disconnect dominates.
 - **Pool is about 1.7× faster** than cloning and destroying a Part each time.
-- **Network's full set of checks costs about 2 µs per request.** That's rate limiting, payload measurement, schema validation and dispatch, so 1,000 requests take about 2 ms of server time.
-- **Use `Random.lootTable`** for anything rolled often. It's about 100× faster than `Random.choose` on 100 entries.
+- **Network's full set of checks costs about 2 µs per request.** That's rate limiting, payload measurement, schema validation and dispatch on the server, not a client-server round trip. 1,000 requests take about 2 ms of server time.
+- **`Random.lootTable` is the one to use for anything rolled often.** Against hand-written code with no validation at all, it's 2.1× faster than a precomputed linear scan (its binary search wins at 100 entries) and 5.4× faster than summing and scanning on every call. `Random.choose` is about 100× slower than `lootTable:Roll` because it validates every entry on every call, which is fine for occasional rolls.
 
 ## Why the two runs differ
 
-- **Pool and Clone + Destroy are about 50% slower in this place** (30.7 vs 19.9 µs, and 51.9 vs 38.9 µs). Both cases create Instances and parent them into `workspace`, so their cost depends on the place and the engine, not just on Luau. Pool's lead over Clone + Destroy is similar in both places: 1.7× now, 1.95× before.
-- **Luau-only cases agree within about 10–15%** between the two places (Cleanup functions, Network, Random, State), which is normal for runs on different days.
-- **Constella.Signal `Fire` is faster because the code changed** (see [History](#history)). sleitnick/signal's `Fire` times didn't move (0.370 µs in both runs), so the improvement isn't noise from the new place.
-- **Some cases had one or two slow runs.** RBXScriptConnection cleanup ranged from 122 to 165 µs for both libraries, and Cleanup functions from 16 to 20 µs. The median absorbs these; compare the best runs too before reading much into a single difference.
-- **Sub-0.3 µs cases are noisy.** sleitnick/signal's `Connect`+`Disconnect` ranged from 0.18 to 0.24 µs across this run's 5 runs. Treat differences under about 20% in those rows as noise.
+- **Pool and Clone + Destroy are about 50% slower in this place** (31.0 vs 19.9 µs, and 52.5 vs 38.9 µs). Both cases create Instances and parent them into `workspace`, so their cost depends on the place and the engine, not just on Luau. Pool's lead over Clone + Destroy is similar in both places: 1.7× now, 1.95× before.
+- **Luau-only cases agree within about 10%** between the two places (Cleanup functions, Network, Random, State), which is normal for runs on different days.
+- **Constella.Signal `Fire` is faster because the code changed** (see [History](#history)). sleitnick/signal + xpcall's `Fire` barely moved (0.375 vs 0.370 µs), so the improvement isn't noise from the new place.
+- **Sub-0.3 µs cases are noisy.** `Connect`+`Disconnect` ranged from 0.12 to 0.43 µs across this run's 5 runs, for every implementation. Treat differences under about 20% in those rows as noise.
 
 ## History
 
