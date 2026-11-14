@@ -130,12 +130,12 @@ When the backend ends a session (for example the player joined another server, w
 | Member | Description |
 | --- | --- |
 | `Data.Store.new(config)` | `Name`, `Template`, `Adapter`, `Version?`, `Migrations?`, `LoadAttempts?` (3), `RetryDelay?` (1s, doubling), `KickOnFailure?`, `Key?(player)`, `Logger?`, `OnError?` |
-| `store:LoadAsync(player)` | A Promise of the Profile. While loading it returns the same promise, and once loaded the same profile |
+| `store:LoadAsync(player)` | A Promise of the Profile. While loading it returns the same promise, and once loaded the same profile. Cancelling the promise clears that load entry and cooperatively stops the worker, which still releases any late session. A later call starts a fresh load |
 | `store:Get(player)` | The loaded profile, or nil |
 | `store:Release(player)` | Ends the session (the adapter does the final save). Cancels a load that's still in progress |
 | `store:BindPlayers()` | Loads players on join and releases them on leave |
-| `store:Shutdown(budget = 20)` | Stops new loads, releases everyone, and waits at most `budget` seconds, including for releases that were already saving (a player who left just before the server closed). Returns whether everything finished in time |
-| `store:GetStats()` | `{ Loaded, Loading, LoadsSucceeded, LoadsFailed, SessionsLost }` |
+| `store:Shutdown(budget = 20)` | Stops new loads, releases everyone, and waits at most `budget` seconds for pending loads, yielding migrations, late session cleanup and releases already saving. Returns whether everything finished in time. Work exceeding the budget continues cleanup in the background |
+| `store:GetStats()` | `{ Loaded, Loading, LoadsSucceeded, LoadsFailed, SessionsLost }`. Loading includes cancelled workers until their session cleanup finishes |
 | `store.Loaded(player, profile)` / `store.Released(player)` | Signals |
 | `profile.Data` | The live data table. Read it freely; change it only with `Set`/`Update` (see [Changing data](#changing-data)) |
 | `profile:Get(key)` / `:Set(key, value)` / `:Update(key, fn)` | `Set`/`Update` fire `profile.Changed(key, new, old)` |

@@ -38,6 +38,7 @@ export type RejectReason =
 	| "Unauthorized"
 	| "NoHandler"
 	| "HandlerError"
+	| "Busy"
 
 export type EndpointConfig = {
 	--- Validators for each argument the client may send. Without a Schema,
@@ -54,6 +55,12 @@ export type EndpointConfig = {
 }
 
 export type ServerOptions = {
+	--- Concurrent requests per player across all endpoints. Defaults to 16.
+	MaxInFlightPerPlayer: number?,
+	--- Concurrent requests across this server namespace. Defaults to 256.
+	MaxInFlight: number?,
+	--- Seconds between aggregated rejection logs per endpoint/reason. Defaults to 5.
+	RejectLogInterval: number?,
 	--- Where the namespace folder is created. Defaults to
 	--- ReplicatedStorage.ConstellaRemotes.
 	Parent: Instance?,
@@ -69,6 +76,7 @@ export type ServerOptions = {
 export type EndpointStats = {
 	Accepted: number,
 	Rejected: { [string]: number },
+	InFlight: number,
 }
 
 export type ServerEvent = {
@@ -132,14 +140,50 @@ local function reject(endpoint: any, player: any, reason: RejectReason, detail: 
 		end
 	end
 	if server._logger then
-		server._logger:Warn("Rejected request", {
+		local now = server._clock()
+		local previous = endpoint._rejectLogs[reason]
+		if previous and now - previous.time < server._rejectLogInterval then
+			return
+		end
+		local count = stats.Rejected[reason] - (if previous then previous.count else 0)
+		endpoint._rejectLogs[reason] = { time = now, count = stats.Rejected[reason] }
+		server._logger:Warn("Rejected requests", {
 			Namespace = server.Namespace,
 			Endpoint = endpoint.Name,
 			Player = if typeof(player) == "Instance" then player.Name else tostring(player),
 			Reason = reason,
 			Detail = detail,
+			Count = count,
 		})
 	end
+end
+
+-- Reserve before user validators/Authorize can yield. Keep the slot until
+-- every handler for an event has returned, including suspended handlers.
+local function reserve(endpoint: any, player: any): any
+	local server = endpoint._server
+	local count = server._inFlightPlayers[player] or 0
+	if count >= server._maxInFlightPerPlayer or server._inFlight >= server._maxInFlight then
+		reject(endpoint, player, "Busy", "concurrent request limit reached")
+		return nil
+	end
+	server._inFlightPlayers[player] = count + 1
+	server._inFlight += 1
+	endpoint._stats.InFlight += 1
+	return { endpoint = endpoint, player = player, pending = 1 }
+end
+
+local function complete(request: any)
+	request.pending -= 1
+	if request.pending > 0 then
+		return
+	end
+	local endpoint, player = request.endpoint, request.player
+	local server = endpoint._server
+	local count = server._inFlightPlayers[player] - 1
+	server._inFlightPlayers[player] = if count > 0 then count else nil
+	server._inFlight -= 1
+	endpoint._stats.InFlight -= 1
 end
 
 -- Runs the security gates. Returns true when the request may proceed,
@@ -267,9 +311,10 @@ local function createEndpoint(
 		_payloadLimits = { MaxBytes = resolved.MaxPayloadBytes or DEFAULT_MAX_PAYLOAD_BYTES },
 		_remote = remote,
 		_destroyed = false,
+		_rejectLogs = {},
 	}, class)
 
-	local stats = { Accepted = 0, Rejected = {} }
+	local stats = { Accepted = 0, Rejected = {}, InFlight = 0 }
 	endpoint._stats = stats
 	server._endpoints[name] = endpoint
 	server._stats[name] = stats
@@ -287,22 +332,38 @@ function ServerEventClass._receive(self: any, player: any, ...: any)
 	if self._destroyed then
 		return
 	end
+	local request = reserve(self, player)
+	if request == nil then
+		return
+	end
 	-- Nothing a client sends may raise an error out of here.
 	local ok, admitted = pcall(admit :: any, self, player, ...)
 	if not ok then
+		complete(request)
 		self._server._onError(
 			PREFIX .. ("Checking a request for '%s' failed: %s"):format(self.Name, tostring(admitted))
 		)
 		return
 	end
 	if admitted then
-		self._signal:Fire(player, ...)
+		self._signal:Fire(request, player, ...)
 	end
+	complete(request)
 end
 
 --- Connects a handler for validated client requests.
 function ServerEventClass.Connect(self: any, handler: (Player, ...any) -> ()): Signal.Connection
-	return self._signal:Connect(handler)
+	if type(handler) ~= "function" then
+		error(PREFIX .. "Connect expects a function", 2)
+	end
+	return self._signal:Connect(function(request: any, player: Player, ...: any)
+		request.pending += 1
+		local ok, err = xpcall(handler :: any, traceback, player, ...)
+		complete(request)
+		if not ok then
+			error(err, 0)
+		end
+	end)
 end
 
 function ServerEventClass.Fire(self: any, player: Player, ...: any)
@@ -351,7 +412,7 @@ ServerFunctionClass.__index = ServerFunctionClass
 --- Internal: processes one client invocation. Returns (true, ...results) or
 --- (false, code) where code is "RateLimited", "Rejected", "Unavailable" or
 --- "ServerError". Called by OnServerInvoke, and by tests.
-function ServerFunctionClass._invoke(self: any, player: any, ...: any): ...any
+local function invoke(self: any, player: any, ...: any): ...any
 	if self._destroyed then
 		return false, "Unavailable"
 	end
@@ -378,6 +439,23 @@ function ServerFunctionClass._invoke(self: any, player: any, ...: any): ...any
 		return false, "ServerError"
 	end
 	return true, table.unpack(results, 2, results.n)
+end
+
+function ServerFunctionClass._invoke(self: any, player: any, ...: any): ...any
+	if self._destroyed then
+		return false, "Unavailable"
+	end
+	local request = reserve(self, player)
+	if request == nil then
+		return false, "RateLimited"
+	end
+	local results = table.pack(pcall(invoke, self, player, ...))
+	complete(request)
+	if not results[1] then
+		self._server._onError(PREFIX .. "Request failed: " .. tostring(results[2]))
+		return false, "ServerError"
+	end
+	return table.unpack(results, 2, results.n)
 end
 
 --- Sets the function that answers validated client invocations. It may
@@ -440,7 +518,7 @@ end
 function ServerClass.GetStats(self: any): { [string]: EndpointStats }
 	local copy = {}
 	for name, stats in self._stats do
-		copy[name] = { Accepted = stats.Accepted, Rejected = table.clone(stats.Rejected) }
+		copy[name] = { Accepted = stats.Accepted, Rejected = table.clone(stats.Rejected), InFlight = stats.InFlight }
 	end
 	return copy
 end
@@ -482,6 +560,16 @@ function Server.new(namespace: string, options: ServerOptions?): Server
 		error(PREFIX .. "Options must be a table", 2)
 	end
 	local opts: ServerOptions = options or {}
+	for _, field in { "MaxInFlight", "MaxInFlightPerPlayer" } do
+		local value = (opts :: any)[field]
+		if value ~= nil and (type(value) ~= "number" or value < 1 or value % 1 ~= 0) then
+			error(PREFIX .. field .. " must be a positive finite integer", 2)
+		end
+	end
+	local logInterval = opts.RejectLogInterval or 5
+	if type(logInterval) ~= "number" or not (logInterval >= 0) or logInterval == math.huge then
+		error(PREFIX .. "RejectLogInterval must be a non-negative finite number", 2)
+	end
 
 	local parent = opts.Parent
 	if parent == nil then
@@ -506,7 +594,12 @@ function Server.new(namespace: string, options: ServerOptions?): Server
 		_endpoints = {},
 		_stats = {},
 		_destroyed = false,
-		_clock = opts.Clock,
+		_clock = opts.Clock or os.clock,
+		_maxInFlight = opts.MaxInFlight or 256,
+		_maxInFlightPerPlayer = opts.MaxInFlightPerPlayer or 16,
+		_inFlight = 0,
+		_inFlightPlayers = {},
+		_rejectLogInterval = logInterval,
 		_logger = opts.Logger,
 		_onReject = opts.OnReject,
 		_onError = opts.OnError or function(message: string)

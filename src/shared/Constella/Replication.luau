@@ -283,7 +283,7 @@ function ServerClass._publish(self: any, share: any, value: any)
 		return
 	end
 	local sent, base = share.sent, share.version
-	share.value = value
+	-- Snapshot ownership belongs to the replicator, even without Delta.
 	share.version = self:_nextVersion()
 	if self._delta then
 		-- `sent` is what clients hold, at version `base`: a private copy,
@@ -292,6 +292,7 @@ function ServerClass._publish(self: any, share: any, value: any)
 		if type(sent) == "table" and type(value) == "table" then
 			local patch, copy = diffCopy(sent, value, 1)
 			share.sent = copy
+			share.value = copy
 			-- An empty patch still moves clients to the new version (and to a
 			-- new table, like the server's state).
 			local message = patch or {}
@@ -302,7 +303,10 @@ function ServerClass._publish(self: any, share: any, value: any)
 			end
 		else
 			share.sent = deepCopy(value)
+			share.value = share.sent
 		end
+	else
+		share.value = deepCopy(value)
 	end
 	self:_broadcast(share, false)
 end
@@ -340,14 +344,15 @@ function ServerClass._addShare(self: any, player: any, name: string, state: any,
 		error(PREFIX .. ("'%s' is already shared%s"):format(name, if player then " with this player" else ""), level)
 	end
 
+	local owned = deepCopy(initial)
 	local share = setmetatable({
 		Name = name,
 		name = name,
 		player = player,
 		state = state,
-		value = initial, -- last value that passed validation
+		value = owned, -- independently owned last validated value
 		-- With Delta: a private copy of what clients were last sent.
-		sent = if self._delta then deepCopy(initial) else nil,
+		sent = if self._delta then owned else nil,
 		version = self:_nextVersion(),
 		_active = true,
 		_server = self,
@@ -403,12 +408,12 @@ end
 function ServerClass._snapshotFor(self: any, player: any): { [string]: { any } }
 	local snapshot = {}
 	for name, share in self._public do
-		snapshot[name] = { share.value, share.version }
+		snapshot[name] = { deepCopy(share.value), share.version }
 	end
 	local private = self._private[player]
 	if private then
 		for name, share in private do
-			snapshot[name] = { share.value, share.version }
+			snapshot[name] = { deepCopy(share.value), share.version }
 		end
 	end
 	return snapshot

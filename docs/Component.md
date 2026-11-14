@@ -31,7 +31,7 @@ Each object has `self.Instance`, `self.Cleanup` (a [Cleanup](Cleanup.md) that's 
 ## Guarantees
 
 - **Ancestry safety.** A tagged instance outside `Ancestors` isn't attached, so tagged templates in ServerStorage are ignored. When an instance moves out, or streams out on a client, it's detached. When it moves back, a fresh object is attached.
-- **Detach order** is: `Stop`, then `Cleanup:Destroy()`, then the `Removed` event. Errors in Stop or Cleanup are reported.
+- **Detach order** is: cancel a suspended `Start` thread, then `Stop`, then `Cleanup:Destroy()`, then the `Removed` event. This applies to manager destruction, tag removal and streaming/ancestry removal. A Start that detaches itself is already running and must return cooperatively. Errors in Stop or Cleanup are reported.
 - **Start errors.** If `Start` errors before it yields, the object is detached, the error is reported and `Added` doesn't fire. An error after a yield is reported, and the object stays attached.
 - **Destroy** on the manager detaches every object and stops observing the tag.
 

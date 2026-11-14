@@ -1,0 +1,25 @@
+{
+	"name": "Constella Multiplayer CI",
+	"tree": {
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"Packages": { "$className": "Folder", "Constella": { "$path": "src/shared/Constella" } }
+		},
+		"ServerScriptService": {
+			"ConstellaTests": {
+				"$className": "Folder",
+				"NetworkIntegration": { "$path": "tests/server/NetworkIntegration.server.luau" },
+				"ReplicationIntegration": { "$path": "tests/server/ReplicationIntegration.server.luau" },
+				"MultiplayerCoordinator": { "$path": "tests/integration/Coordinator.server.luau" }
+			}
+		},
+		"StarterPlayer": {
+			"StarterPlayerScripts": {
+				"ConstellaTests": {
+					"$path": "tests/client",
+					"MultiplayerReporter": { "$path": "tests/integration/Reporter.client.luau" }
+				}
+			}
+		}
+	}
+}

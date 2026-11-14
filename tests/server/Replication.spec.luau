@@ -220,13 +220,22 @@ return function(t, Constella)
 		-- Changes a copy of `value` a little: sets, removals and nested edits.
 		local function mutate(rng, value, depth)
 			local copy = table.clone(value)
+			-- Keep generated arrays contiguous and free of string fields;
+			-- mixed tables do not survive Roblox remote serialization.
+			local array = #value > 0
 			for _ = 1, rng:NextInteger(0, 3) do
-				local key = "k" .. rng:NextInteger(1, 6)
+				local key = if array then rng:NextInteger(1, #copy + 1) else "k" .. rng:NextInteger(1, 6)
 				local action = rng:NextInteger(1, 3)
 				if action == 1 then
 					copy[key] = randomValue(rng, depth + 1)
 				elseif action == 2 then
-					copy[key] = nil
+					if array then
+						if key <= #copy then
+							table.remove(copy, key)
+						end
+					else
+						copy[key] = nil
+					end
 				elseif type(copy[key]) == "table" and depth < 3 then
 					copy[key] = mutate(rng, copy[key], depth + 1)
 				end

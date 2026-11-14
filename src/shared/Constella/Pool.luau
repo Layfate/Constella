@@ -167,12 +167,19 @@ end
 
 --- Creates idle objects until there are `count` idle (bounded by MaxIdle).
 function PoolClass.Prewarm(self: any, count: number)
+	if self._destroyed then
+		error(PREFIX .. "Cannot prewarm a destroyed Pool", 2)
+	end
 	checkCount(count, "Prewarm count", true, 3)
 	local target = math.min(count, self._maxIdle)
 	while #self._idle < target do
 		local object = create(self)
 		if self._reset then
-			self._reset(object)
+			local ok, err = pcall(self._reset, object)
+			if not ok then
+				pcall(dispose :: any, self, object)
+				error(PREFIX .. "Reset failed; the object was destroyed: " .. tostring(err), 2)
+			end
 		end
 		table.insert(self._idle, object)
 	end
@@ -251,7 +258,11 @@ function Pool.new<T>(options: Options<T>): Pool<T>
 	}, PoolClass)
 
 	if options.Prewarm ~= nil then
-		PoolClass.Prewarm(self, options.Prewarm)
+		local ok, err = pcall(PoolClass.Prewarm :: any, self, options.Prewarm)
+		if not ok then
+			pcall(PoolClass.Destroy, self)
+			error(err, 2)
+		end
 	end
 	return (self :: any) :: Pool<T>
 end
