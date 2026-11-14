@@ -2,5 +2,5 @@
 # It is not intended for manual editing.
 format = 2
 name = "zense/constella"
-version = "0.3.0"
+version = "0.3.2"
 target = "roblox"

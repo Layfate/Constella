@@ -34,14 +34,22 @@ Still verification work. No new modules.
 - **Types:** ✅ typed public API (`Promise<T>`, `Store<T>`/`Profile<T>`, real `self` types).
 - **Hardening:** ✅ cancelled waiting threads are skipped everywhere, and settled promises, disconnected connections and players who left mid-load no longer stay referenced. Each fix has a regression test.
 - **Performance:** ✅ fewer allocations in Random, Promise, State, Cleanup, Network, Replication and Zone, measured A/B against 0.2.0 on a Roblox server (see [Benchmarks](Benchmarks.md)).
-- **Packaging:** ✅ Wally and pesde packages checked in CI; publishing to the registries is the next step.
+- **Packaging:** ✅ Wally and pesde packages checked in CI; 0.3.0 is published as `layfate/constella` on Wally and `zense/constella` on pesde. Fresh installs from both registries match every library module.
 
-## After v0.3.0 (version number unchanged)
+## v0.3.1 — lifecycle, concurrency and Delta replication · released 2026-11-14
 
+- **Lifecycle:** ✅ cancelled Data loads, Component `Start` threads, Signal runners and Pool prewarm failures clean up fully.
+- **Network:** ✅ per-player and overall in-flight request limits (16 and 256 by default).
 - **Promise:** ✅ executors and handlers on recycled threads: about 2× faster and up to 56% less memory per promise.
 - **Replication:** ✅ one validation walk (full sends a third faster) and the opt-in **Delta** mode (95% fewer bytes for small changes to big tables).
 - **Zone, Network, Signal:** ✅ fewer allocations and checks per step, request and connection.
 - **Benchmarks:** ✅ every module, a 50-player tick, LemonSignal/Janitor/evaera Promise as competitors, confidence intervals, and a CI gate that fails a pull request with a regression.
+
+## v0.3.2 — departed players and faster hot paths · released 2026-11-14
+
+- **Network, Replication:** ✅ requests and shares for players who already left keep nothing alive; refused Replication resyncs are retried with backoff.
+- **Data:** ✅ `profile:Update` fires `Changed` for in-place edits.
+- **Performance:** ✅ nested Signal `Fire` and promise chains reuse parked runner threads (25–34% faster, no garbage per nesting level); State `Set` 32% faster; Network requests allocate nothing.
 
 ## Next
 

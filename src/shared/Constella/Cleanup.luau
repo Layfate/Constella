@@ -200,6 +200,19 @@ end
 --- Adds a resource and returns it, so calls can be inlined:
 --- `local part = cleanup:Add(Instance.new("Part"))`
 function CleanupClass.Add(self: any, resource: any, method: string?): any
+	-- Fast path for the most common resources: functions and threads need no
+	-- method lookup, so they are appended directly.
+	if method == nil and not self._destroyed then
+		local kind = type(resource)
+		local marker = if kind == "function" then CALL elseif kind == "thread" then CANCEL else nil
+		if marker then
+			local resources = self._resources
+			local index = #resources + 1
+			resources[index] = resource
+			self._methods[index] = marker
+			return resource
+		end
+	end
 	return addEntry(self, resource, method, nil, 3)
 end
 
@@ -314,10 +327,16 @@ local function clean(self: any, level: number)
 		local resource, method = resources[count], methods[count]
 		resources[count] = nil
 		methods[count] = nil
-		if method == KEYED and self._keys[resource.key] == resource then
-			self._keys[resource.key] = nil
+		local ok, err
+		if method == CALL then
+			-- The most common resource: call it directly (one call fewer).
+			ok, err = pcall(resource)
+		else
+			if method == KEYED and self._keys[resource.key] == resource then
+				self._keys[resource.key] = nil
+			end
+			ok, err = pcall(dispose :: any, resource, method)
 		end
-		local ok, err = pcall(dispose :: any, resource, method)
 		if not ok then
 			errors = errors or {}
 			table.insert(errors :: { string }, tostring(err))

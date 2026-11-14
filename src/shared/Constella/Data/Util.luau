@@ -3,14 +3,36 @@
 
 local Util = {}
 
---- Deep-copies plain tables (keys and values). Other values are returned as is.
+-- The general copy: rebuilds key by key, copying table keys too. Used for
+-- tables with a metatable (the copy never has one) or with table keys.
+local function copyGeneral(value: { [any]: any }, deepCopy: (any) -> any): { [any]: any }
+	local copy = {}
+	for key, item in value do
+		copy[deepCopy(key)] = deepCopy(item)
+	end
+	return copy
+end
+
+--- Deep-copies plain tables (keys and values). Other values are returned as
+--- is. The copy never has a metatable.
 function Util.deepCopy(value: any): any
 	if type(value) ~= "table" then
 		return value
 	end
-	local copy = {}
+	if getmetatable(value) ~= nil then
+		return copyGeneral(value, Util.deepCopy)
+	end
+	-- Fast path: clone in one allocation (no rehashing as keys are added),
+	-- then copy only the nested tables. Data is mostly strings and numbers,
+	-- which need no work at all.
+	local copy = table.clone(value)
 	for key, item in value do
-		copy[Util.deepCopy(key)] = Util.deepCopy(item)
+		if type(key) == "table" then
+			return copyGeneral(value, Util.deepCopy)
+		end
+		if type(item) == "table" then
+			copy[key] = Util.deepCopy(item)
+		end
 	end
 	return copy
 end

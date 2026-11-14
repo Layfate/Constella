@@ -158,27 +158,39 @@ local function reject(endpoint: any, player: any, reason: RejectReason, detail: 
 	end
 end
 
--- Reserve before user validators/Authorize can yield. Keep the slot until
--- every handler for an event has returned, including suspended handlers.
-local function reserve(endpoint: any, player: any): any
+-- In-flight slots. A request reserves one before user validators/Authorize
+-- can yield. Each event handler holds a slot of its own while it runs
+-- (including while suspended), and the request releases its initial slot
+-- after dispatch, so the player's slot stays taken until every handler has
+-- returned. No per-request record is needed, so a request allocates nothing.
+local function reserve(endpoint: any, player: any): boolean
 	local server = endpoint._server
+	-- A request can arrive after PlayerRemoving. Admitting it would create
+	-- rate-limit state for a player who is gone, which nothing would clear.
+	if server._departed[player] then
+		return false
+	end
 	local count = server._inFlightPlayers[player] or 0
 	if count >= server._maxInFlightPerPlayer or server._inFlight >= server._maxInFlight then
 		reject(endpoint, player, "Busy", "concurrent request limit reached")
-		return nil
+		return false
 	end
 	server._inFlightPlayers[player] = count + 1
 	server._inFlight += 1
 	endpoint._stats.InFlight += 1
-	return { endpoint = endpoint, player = player, pending = 1 }
+	return true
 end
 
-local function complete(request: any)
-	request.pending -= 1
-	if request.pending > 0 then
-		return
-	end
-	local endpoint, player = request.endpoint, request.player
+-- Takes a slot without checking the limits: for a handler of a request that
+-- was already admitted (and still holds its own slot).
+local function hold(endpoint: any, player: any)
+	local server = endpoint._server
+	server._inFlightPlayers[player] = (server._inFlightPlayers[player] or 0) + 1
+	server._inFlight += 1
+	endpoint._stats.InFlight += 1
+end
+
+local function release(endpoint: any, player: any)
 	local server = endpoint._server
 	local count = server._inFlightPlayers[player] - 1
 	server._inFlightPlayers[player] = if count > 0 then count else nil
@@ -332,23 +344,22 @@ function ServerEventClass._receive(self: any, player: any, ...: any)
 	if self._destroyed then
 		return
 	end
-	local request = reserve(self, player)
-	if request == nil then
+	if not reserve(self, player) then
 		return
 	end
 	-- Nothing a client sends may raise an error out of here.
 	local ok, admitted = pcall(admit :: any, self, player, ...)
 	if not ok then
-		complete(request)
+		release(self, player)
 		self._server._onError(
 			PREFIX .. ("Checking a request for '%s' failed: %s"):format(self.Name, tostring(admitted))
 		)
 		return
 	end
 	if admitted then
-		self._signal:Fire(request, player, ...)
+		self._signal:Fire(player, ...)
 	end
-	complete(request)
+	release(self, player)
 end
 
 --- Connects a handler for validated client requests.
@@ -356,10 +367,10 @@ function ServerEventClass.Connect(self: any, handler: (Player, ...any) -> ()): S
 	if type(handler) ~= "function" then
 		error(PREFIX .. "Connect expects a function", 2)
 	end
-	return self._signal:Connect(function(request: any, player: Player, ...: any)
-		request.pending += 1
+	return self._signal:Connect(function(player: Player, ...: any)
+		hold(self, player)
 		local ok, err = xpcall(handler :: any, traceback, player, ...)
-		complete(request)
+		release(self, player)
 		if not ok then
 			error(err, 0)
 		end
@@ -412,6 +423,8 @@ ServerFunctionClass.__index = ServerFunctionClass
 --- Internal: processes one client invocation. Returns (true, ...results) or
 --- (false, code) where code is "RateLimited", "Rejected", "Unavailable" or
 --- "ServerError". Called by OnServerInvoke, and by tests.
+local finishHandler: (self: any, player: any, ok: boolean, ...any) -> ...any
+
 local function invoke(self: any, player: any, ...: any): ...any
 	if self._destroyed then
 		return false, "Unavailable"
@@ -432,30 +445,39 @@ local function invoke(self: any, player: any, ...: any): ...any
 		reject(self, player, "NoHandler", nil)
 		return false, "Unavailable"
 	end
-	local results = table.pack(xpcall(handler, traceback, player, ...))
-	if not results[1] then
-		self._server._onError(PREFIX .. ("Handler for '%s' failed: %s"):format(self.Name, tostring(results[2])))
+	-- Results pass through as varargs (no table per call).
+	return finishHandler(self, player, xpcall(handler, traceback, player, ...))
+end
+
+function finishHandler(self: any, player: any, ok: boolean, ...: any): ...any
+	if not ok then
+		self._server._onError(PREFIX .. ("Handler for '%s' failed: %s"):format(self.Name, tostring((...))))
 		reject(self, player, "HandlerError", nil)
 		return false, "ServerError"
 	end
-	return true, table.unpack(results, 2, results.n)
+	return true, ...
+end
+
+local function finishInvoke(self: any, player: any, ok: boolean, ...: any): ...any
+	release(self, player)
+	if not ok then
+		self._server._onError(PREFIX .. "Request failed: " .. tostring((...)))
+		return false, "ServerError"
+	end
+	return ...
 end
 
 function ServerFunctionClass._invoke(self: any, player: any, ...: any): ...any
 	if self._destroyed then
 		return false, "Unavailable"
 	end
-	local request = reserve(self, player)
-	if request == nil then
+	if self._server._departed[player] then
+		return false, "Unavailable"
+	end
+	if not reserve(self, player) then
 		return false, "RateLimited"
 	end
-	local results = table.pack(pcall(invoke, self, player, ...))
-	complete(request)
-	if not results[1] then
-		self._server._onError(PREFIX .. "Request failed: " .. tostring(results[2]))
-		return false, "ServerError"
-	end
-	return table.unpack(results, 2, results.n)
+	return finishInvoke(self, player, pcall(invoke, self, player, ...))
 end
 
 --- Sets the function that answers validated client invocations. It may
@@ -525,6 +547,7 @@ end
 
 --- Internal: drops per-player state. Called on PlayerRemoving.
 function ServerClass._forgetPlayer(self: any, player: any)
+	self._departed[player] = true
 	for _, endpoint in self._endpoints do
 		if endpoint._limiter then
 			endpoint._limiter:Forget(player)
@@ -599,6 +622,8 @@ function Server.new(namespace: string, options: ServerOptions?): Server
 		_maxInFlightPerPlayer = opts.MaxInFlightPerPlayer or 16,
 		_inFlight = 0,
 		_inFlightPlayers = {},
+		-- Players who left. Weak keys: a departed Player can still be collected.
+		_departed = setmetatable({}, { __mode = "k" }),
 		_rejectLogInterval = logInterval,
 		_logger = opts.Logger,
 		_onReject = opts.OnReject,

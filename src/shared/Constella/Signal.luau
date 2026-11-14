@@ -83,7 +83,20 @@ local lastConnectionId = 0
 -- connection instead was tried, and then the most recent Fire argument was
 -- the value held. Holding a listener, usually long-lived anyway, is better
 -- than holding a payload.
+--
+--
+-- `Fire` always starts a listener on `freeRunner`; the runner takes itself
+-- out of that slot while the listener runs and puts itself back afterwards.
+-- A listener that fires another signal (an event chain) needs a second
+-- runner while the first is busy, and that one parks in `freeRunner` when it
+-- finishes. Instead of overwriting it, the first runner then moves it onto a
+-- small stack of spares, so nested Fires allocate no threads once warmed up.
+-- The stack is bounded, and so is what idle spares can hold (one call each,
+-- as above).
 local freeRunner: thread? = nil
+local spareRunners: { thread } = {}
+local spareCount = 0
+local MAX_SPARE_RUNNERS = 8
 
 local function runOnRunner(onError: (string) -> (), callback: (...any) -> (), ...: any)
 	local runner = freeRunner
@@ -91,6 +104,11 @@ local function runOnRunner(onError: (string) -> (), callback: (...any) -> (), ..
 	local ok, message = xpcall(callback :: any, traceback, ...)
 	if not ok then
 		onError(message)
+	end
+	local nested = freeRunner
+	if nested ~= nil and spareCount < MAX_SPARE_RUNNERS then
+		spareCount += 1
+		spareRunners[spareCount] = nested
 	end
 	freeRunner = runner
 end
@@ -109,6 +127,20 @@ local function newRunner(): thread
 	local runner = coroutine.create(runnerLoop)
 	coroutine.resume(runner) -- run to the first yield
 	return runner
+end
+
+-- A runner for when `freeRunner` is taken: a parked spare (skipping any that
+-- user code cancelled while idle), or a new one.
+local function takeSpareRunner(): thread
+	while spareCount > 0 do
+		local runner = spareRunners[spareCount]
+		spareRunners[spareCount] = nil
+		spareCount -= 1
+		if coroutine.status(runner) == "suspended" then
+			return runner
+		end
+	end
+	return newRunner()
 end
 
 local ConnectionClass = {}
@@ -216,10 +248,19 @@ function SignalClass.Fire(self: any, ...: any)
 	end
 	local lastId = lastConnectionId
 	local onError = self._onError
+	-- An idle runner can only die if user code cancelled it between Fires
+	-- (for example a listener that added coroutine.running() to a Cleanup).
+	-- Inside this loop the idle runner is always one that just finished a
+	-- listener here and parked itself (suspended), or nil, so checking once
+	-- per Fire is enough instead of once per listener.
+	local idle = freeRunner
+	if idle ~= nil and coroutine.status(idle) ~= "suspended" then
+		freeRunner = nil
+	end
 	-- Dispatch is written out here (one call fewer per listener). A runner
 	-- clears freeRunner while its listener runs and restores it when the
 	-- listener returns, so a listener that yields makes the next one start
-	-- on a new runner.
+	-- on another runner.
 	while node do
 		local id = node[ID]
 		if id < 0 then
@@ -230,8 +271,8 @@ function SignalClass.Fire(self: any, ...: any)
 				-- Read before Disconnect, which clears the callback slot.
 				local callback = node[CALLBACK]
 				node:Disconnect()
-				if freeRunner == nil or coroutine.status(freeRunner :: thread) ~= "suspended" then
-					freeRunner = newRunner()
+				if freeRunner == nil then
+					freeRunner = takeSpareRunner()
 				end
 				task.spawn(freeRunner :: thread, onError, callback, ...)
 			end
@@ -240,8 +281,8 @@ function SignalClass.Fire(self: any, ...: any)
 				break
 			end
 			if node.Connected then
-				if freeRunner == nil or coroutine.status(freeRunner :: thread) ~= "suspended" then
-					freeRunner = newRunner()
+				if freeRunner == nil then
+					freeRunner = takeSpareRunner()
 				end
 				task.spawn(freeRunner :: thread, onError, node[CALLBACK], ...)
 			end

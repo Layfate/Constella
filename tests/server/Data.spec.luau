@@ -307,6 +307,83 @@ return function(t, Constella)
 			profile:Set("Coins", 6)
 			expect(changes).toEqual({ { "Coins", 5, 0 }, { "Coins", 6, 5 } })
 		end)
+
+		t.it("gives every profile an independent, writable copy of a frozen nested template", function()
+			local adapter = MemoryAdapter.new()
+			local store = Data.Store.new({
+				Name = "Frozen",
+				Template = table.freeze({
+					Coins = 0,
+					Settings = table.freeze({ Music = true, Keys = table.freeze({ "W", "A" }) }),
+				}),
+				Adapter = adapter,
+				KickOnFailure = false,
+				OnError = function() end,
+			})
+			local a, b = fakePlayer(), fakePlayer()
+			local _, first = load(store, a)
+			local _, second = load(store, b)
+			expect(table.isfrozen(first.Data.Settings)).toBe(false)
+			expect(table.isfrozen(first.Data.Settings.Keys)).toBe(false)
+			first.Data.Settings.Music = false
+			table.insert(first.Data.Settings.Keys, "S")
+			expect(second.Data.Settings.Music).toBe(true)
+			expect(second.Data.Settings.Keys).toEqual({ "W", "A" })
+			-- What was saved is a copy too: later edits don't reach it.
+			store:Release(a)
+			local saved = adapter:Peek("Frozen", "Player_" .. a.UserId)
+			expect(saved.Settings.Keys).toEqual({ "W", "A", "S" })
+			first.Data.Settings.Keys[1] = "changed after release"
+			expect(adapter:Peek("Frozen", "Player_" .. a.UserId).Settings.Keys[1]).toBe("W")
+			store:Release(b)
+		end)
+
+		t.it("Update fires Changed for a table edited in place", function()
+			local store = newStore()
+			local _, profile = load(store, fakePlayer())
+			profile:Set("Items", {})
+			local seen = {}
+			profile.Changed:Connect(function(key, new, old)
+				table.insert(seen, { key, new, old })
+			end)
+			local items = profile:Get("Items")
+			profile:Update("Items", function(current)
+				table.insert(current, "Sword")
+				return current
+			end)
+			expect(#seen).toBe(1)
+			expect(seen[1][1]).toBe("Items")
+			expect(seen[1][2]).toBe(items)
+			expect(seen[1][3]).toBe(items)
+			expect(profile:Get("Items")).toEqual({ "Sword" })
+			-- An unchanged non-table value still doesn't fire.
+			profile:Set("Coins", 3)
+			profile:Update("Coins", function(coins)
+				return coins
+			end)
+			expect(#seen).toBe(2)
+		end)
+
+		t.it("Update raises if the session ended while the updater yielded", function()
+			local store = newStore()
+			local player = fakePlayer()
+			local _, profile = load(store, player)
+			local resume = Constella.Signal.new()
+			local result
+			task.spawn(function()
+				result = table.pack(pcall(function()
+					profile:Update("Coins", function(coins)
+						resume:Wait()
+						return coins + 1
+					end)
+				end))
+			end)
+			store:Release(player)
+			resume:Fire()
+			expect(result[1]).toBe(false)
+			expect(string.find(tostring(result[2]), "no longer active", 1, true) ~= nil).toBe(true)
+			resume:Destroy()
+		end)
 	end)
 
 	t.describe("shutdown", function()

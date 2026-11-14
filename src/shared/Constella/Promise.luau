@@ -161,12 +161,26 @@ end
 -- reachable in an idle runner's unused stack slots until it runs the next
 -- job. That is bounded to one job, not a leak. The job comes first in the
 -- argument list, then the user's function, then the promise and values.
+--
+-- A job that settles another promise (every step of a chain) starts that
+-- promise's handlers while its own runner is still busy, so they run on a
+-- second runner, which parks in `freeRunner` when it finishes. Instead of
+-- overwriting it, the first runner then moves it onto a small bounded stack
+-- of spares, so chains allocate no threads once warmed up.
 local freeRunner: thread? = nil
+local spareRunners: { thread } = {}
+local spareCount = 0
+local MAX_SPARE_RUNNERS = 8
 
 local function runJob(job: (...any) -> (), ...: any)
 	local runner = freeRunner
 	freeRunner = nil
 	job(...)
+	local nested = freeRunner
+	if nested ~= nil and spareCount < MAX_SPARE_RUNNERS then
+		spareCount += 1
+		spareRunners[spareCount] = nested
+	end
 	freeRunner = runner
 end
 
@@ -183,10 +197,22 @@ local function spawnJob(job: (...any) -> (), ...: any)
 	-- A runner is only reused while it's parked. (User code could have
 	-- cancelled it, for example by adding coroutine.running() to a Cleanup.)
 	if runner == nil or coroutine.status(runner :: thread) ~= "suspended" then
-		local fresh = coroutine.create(runnerLoop)
-		coroutine.resume(fresh) -- run to the first yield
-		freeRunner = fresh
-		runner = fresh
+		runner = nil
+		while spareCount > 0 do
+			local spare = spareRunners[spareCount]
+			spareRunners[spareCount] = nil
+			spareCount -= 1
+			if coroutine.status(spare) == "suspended" then
+				runner = spare
+				break
+			end
+		end
+		if runner == nil then
+			local fresh = coroutine.create(runnerLoop)
+			coroutine.resume(fresh) -- run to the first yield
+			runner = fresh
+		end
+		freeRunner = runner
 	end
 	task.spawn(runner :: thread, job, ...)
 end

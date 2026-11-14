@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://github.com/Layfate/Constella/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Layfate/Constella/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7c6cf0"></a>
-  <a href="CHANGELOG.md"><img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-4fb4f0"></a>
+  <a href="CHANGELOG.md"><img alt="Version 0.3.2" src="https://img.shields.io/badge/version-0.3.2-4fb4f0"></a>
   <img alt="Luau: strict" src="https://img.shields.io/badge/luau-strict-5b7cfa">
   <img alt="Platform: Roblox" src="https://img.shields.io/badge/platform-Roblox-3b3f63">
 </p>
@@ -29,10 +29,10 @@
 ```toml
 # wally.toml
 [dependencies]
-Constella = "zense/constella@0.3.0"
+Constella = "layfate/constella@0.3.2"
 ```
 
-Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). Wally and pesde packages are coming soon; see [Installation](#installation).
+Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
 
 - **Use only what you need.** Every module loads on first use. `require(Constella.Signal)` loads Signal and nothing else, and no system starts unless you start it.
 - **Safe networking by default.** Every client request passes rate limiting, payload caps, schema validation and your authorization check before your code runs. Clients only ever see generic error codes; the details stay on the server.
@@ -182,13 +182,14 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 
 **Download (easiest).** Get `Constella.rbxm` from the [latest release](https://github.com/Layfate/Constella/releases/latest). In Studio, right-click `ReplicatedStorage` → **Insert from File…** and choose the file. Then move the inserted `Constella` module into a Folder named `Packages`, so the path is `ReplicatedStorage.Packages.Constella`.
 
-> **Wally and pesde:** Constella isn't on either registry yet. Until it is, use the download above or the model file below. The packages are ready and checked on every push.
+> [!TIP]
+> The package is named `layfate/constella` on Wally and `zense/constella` on pesde. The release download, the Wally package and the pesde package are built from the same tagged source.
 
 **Wally.** Add Constella to `wally.toml`, then run `wally install`:
 
 ```toml
 [dependencies]
-Constella = "zense/constella@0.3.0"
+Constella = "layfate/constella@0.3.2"
 ```
 
 **pesde.**
@@ -197,7 +198,7 @@ Constella = "zense/constella@0.3.0"
 pesde add zense/constella
 ```
 
-**Model file.** Build it with Rojo, then insert `Constella.rbxm` into `ReplicatedStorage.Packages`:
+**Build from source.** Build the model file with Rojo, then insert `Constella.rbxm` into `ReplicatedStorage.Packages`:
 
 ```bash
 rojo build default.project.json -o Constella.rbxm

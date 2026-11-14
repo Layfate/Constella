@@ -62,9 +62,27 @@ return function(t, Constella)
 			share:Stop()
 			expect(snapshot(server, player).Public).toBeNil()
 			server:_forgetPlayer(player)
-			expect(snapshot(server, player).Private).toBeNil()
+			expect(server._private[player]).toBeNil()
+			expect(snapshot(server, { Name = "Rejoined" }).Private).toBeNil()
 			-- The name is free again once every share using it is gone.
 			server:Share("Private", State.new(0))
+			server:Destroy()
+		end)
+
+		t.it("keeps nothing for a player who left before ShareWith", function()
+			local server = newServer()
+			local player = { Name = "Gone" }
+			server:_forgetPlayer(player)
+			local coins = State.new(10)
+			local share = server:ShareWith(player, "Coins", coins)
+			expect(share.Name).toBe("Coins")
+			expect(server._private[player]).toBeNil()
+			expect(server._nameKinds.Coins).toBeNil()
+			-- Not subscribed: changes don't reach the replicator.
+			expect(coins._changed:GetConnectionCount()).toBe(0)
+			share:Stop() -- already stopped; must not raise
+			-- The name is still free for a public share.
+			server:Share("Coins", State.new(0))
 			server:Destroy()
 		end)
 
@@ -472,6 +490,77 @@ return function(t, Constella)
 			expect(resyncs).toBe(3)
 			expect(mirror:Get("Bag"):Get()).toEqual({ Gold = 1 })
 			mirror:Destroy()
+		end)
+
+		t.it("retries a refused resync with one fetch at a time, then applies the snapshot", function()
+			local mirror = Replication._newMirror()
+			local fetches, concurrent, maxConcurrent = 0, 0, 0
+			mirror._resyncDelay = 0
+			mirror._fetch = function()
+				fetches += 1
+				concurrent += 1
+				maxConcurrent = math.max(maxConcurrent, concurrent)
+				task.wait()
+				concurrent -= 1
+				if fetches < 3 then
+					return false, "RateLimited"
+				end
+				return true, { Bag = { { Gold = 9 }, 8 } }
+			end
+			mirror._onResync = function()
+				mirror:_resync()
+			end
+			mirror:Apply("Bag", { Gold = 1 }, 5)
+			mirror:Apply("Bag", { k = "Gold" }, 6, false, 5) -- malformed: resync
+			mirror:Apply("Bag", { k = "Gold" }, 7, false, 5) -- already resyncing
+			for _ = 1, 20 do
+				if mirror:Get("Bag"):Get().Gold == 9 then
+					break
+				end
+				task.wait()
+			end
+			expect(mirror:Get("Bag"):Get()).toEqual({ Gold = 9 })
+			expect(fetches).toBe(3)
+			expect(maxConcurrent).toBe(1)
+			expect(mirror._resyncing).toBe(false)
+			mirror:Destroy()
+		end)
+
+		t.it("gives up after a bounded number of refused resyncs", function()
+			local mirror = Replication._newMirror()
+			local fetches = 0
+			mirror._resyncDelay = 0
+			mirror._fetch = function()
+				fetches += 1
+				return false, "RateLimited"
+			end
+			mirror:_resync()
+			for _ = 1, 20 do
+				task.wait()
+			end
+			expect(fetches).toBe(5)
+			expect(mirror._resyncing).toBe(false)
+			mirror:Destroy()
+		end)
+
+		t.it("ignores a snapshot that arrives after Destroy", function()
+			local mirror = Replication._newMirror()
+			local release = Constella.Signal.new()
+			mirror._fetch = function()
+				release:Wait()
+				return true, { Bag = { { Gold = 9 }, 8 } }
+			end
+			mirror:Apply("Bag", { Gold = 1 }, 5)
+			local bag = mirror:Get("Bag")
+			mirror:_resync()
+			mirror:Destroy()
+			release:Fire()
+			expect(bag:IsDestroyed()).toBe(true)
+			expect(mirror._entries.Bag).toBeNil()
+			-- Updates after Destroy are ignored too, instead of creating entries.
+			mirror:Apply("Other", 1, 1)
+			expect(mirror._entries.Other).toBeNil()
+			release:Destroy()
 		end)
 	end)
 end

@@ -79,6 +79,35 @@ return function(t, Constella)
 	end)
 
 	t.describe("ordering and idempotency", function()
+		t.it("cancels threads alongside functions, in reverse order, and after Destroy", function()
+			local cleanup = Cleanup.new()
+			local order = {}
+			local ran = false
+			cleanup:Add(function()
+				table.insert(order, "first")
+			end)
+			local thread = cleanup:Add(task.delay(60, function()
+				ran = true
+			end))
+			cleanup:Add(function()
+				table.insert(order, "last")
+			end)
+			expect(cleanup:Count()).toBe(3)
+			cleanup:Destroy()
+			expect(order).toEqual({ "last", "first" })
+			expect(coroutine.status(thread)).toBe("dead")
+			expect(ran).toBe(false)
+			-- After Destroy, functions and threads are disposed immediately.
+			local late = false
+			cleanup:Add(function()
+				late = true
+			end)
+			expect(late).toBe(true)
+			local lateThread = cleanup:Add(task.delay(60, function() end))
+			expect(coroutine.status(lateThread)).toBe("dead")
+			expect(cleanup:Count()).toBe(0)
+		end)
+
 		t.it("cleans in reverse order of addition", function()
 			local cleanup = Cleanup.new()
 			local order = {}

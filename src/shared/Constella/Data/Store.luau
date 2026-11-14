@@ -169,12 +169,23 @@ function ProfileClass.Set(self: any, key: string, value: any)
 	self.Changed:Fire(key, value, old)
 end
 
+--- Sets `key` to `updater(current)`. An updater may also change a table in
+--- place and return it: Changed still fires (with the same table as new and
+--- old value), so listeners never miss an edit made this way.
 function ProfileClass.Update(self: any, key: string, updater: (any) -> any)
 	checkActive(self, 3)
 	if type(updater) ~= "function" then
 		error(PREFIX .. "Update expects a function", 2)
 	end
-	ProfileClass.Set(self, key, updater(self.Data[key]))
+	local old = self.Data[key]
+	local new = updater(old)
+	-- The updater is user code and may have yielded past a session loss.
+	checkActive(self, 3)
+	if new == old and type(new) ~= "table" then
+		return
+	end
+	self.Data[key] = new
+	self.Changed:Fire(key, new, old)
 end
 
 --- Requests a save now. Returns false if the session is gone or the save failed.
