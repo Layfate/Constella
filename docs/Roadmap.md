@@ -26,7 +26,7 @@ This stage proved that what exists works well. No new modules were added.
 - **Random:** ✅ chi-squared tests for the weights, the Luck formula and shuffle; a [server-authoritative reward pattern](Random.md#server-authoritative-rewards) is documented.
 - **Reviews:** ✅ three rounds of review fixes, including a Data shutdown race and runaway `Start` threads; every fix has a regression test (see the [changelog](https://github.com/Layfate/Constella/blob/main/CHANGELOG.md)).
 
-## v0.3.0 — types, Data out of beta, hardening
+## v0.3.0 — types, Data out of beta, hardening · released 2026-11-14
 
 Still verification work. No new modules.
 
@@ -34,7 +34,7 @@ Still verification work. No new modules.
 - **Types:** ✅ typed public API (`Promise<T>`, `Store<T>`/`Profile<T>`, real `self` types).
 - **Hardening:** ✅ cancelled waiting threads are skipped everywhere, and settled promises, disconnected connections and players who left mid-load no longer stay referenced. Each fix has a regression test.
 - **Performance:** ✅ fewer allocations in Random, Promise, State, Cleanup, Network, Replication and Zone, measured A/B against 0.2.0 on a Roblox server (see [Benchmarks](Benchmarks.md)).
-- **Packaging:** ✅ Wally and pesde packages checked in CI; publishing to the registries happens with the 0.3.0 release.
+- **Packaging:** ✅ Wally and pesde packages checked in CI; publishing to the registries is the next step.
 
 ## Next
 

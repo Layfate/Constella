@@ -2,7 +2,7 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
-## Unreleased (0.3.0)
+## 0.3.0 — 2026-11-14
 
 Typed public API, Data out of beta, fixes for cancelled waiting threads and for references kept longer than needed, and fewer allocations on hot paths. No modules or public functions were removed, and no behaviour changed except as listed under Fixed.
 
