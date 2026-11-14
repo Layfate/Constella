@@ -75,6 +75,13 @@ local function checkTimeout(value: any, level: number): number
 	return value
 end
 
+-- Resumes the calling thread unless it was cancelled while it waited.
+local function resume(thread: thread, ...: any)
+	if coroutine.status(thread) == "suspended" then
+		task.spawn(thread, ...)
+	end
+end
+
 local function waitFor(parent: Instance, name: string, timeout: number, what: string): Instance
 	local child = parent:WaitForChild(name, timeout)
 	if child == nil then
@@ -133,14 +140,14 @@ function ClientFunctionClass.Invoke(self: any, ...: any): (boolean, ...any)
 			return
 		end
 		finished = true
-		task.spawn(thread, results)
+		resume(thread, results)
 	end)
 	local timer = task.delay(self._timeout, function()
 		if finished then
 			return
 		end
 		finished = true
-		task.spawn(thread, nil)
+		resume(thread, nil)
 	end)
 
 	local results: any = coroutine.yield()

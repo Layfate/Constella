@@ -135,8 +135,7 @@ function ServerClass._validate(self: any, value: any): string?
 	if reason ~= nil then
 		return reason
 	end
-	local size, sizeReason =
-		Network.Payload.measure({ MaxBytes = self._maxBytes, MaxDepth = 16, MaxNodes = 4096 }, value)
+	local size, sizeReason = Network.Payload.measure(self._limits, value)
 	if size == nil then
 		return sizeReason
 	end
@@ -340,7 +339,7 @@ function Server.new(namespace: string, options: ServerOptions?): ReplicationServ
 		_private = {},
 		_nameKinds = {},
 		_nameCounts = {},
-		_maxBytes = maxBytes,
+		_limits = table.freeze({ MaxBytes = maxBytes, MaxDepth = 16, MaxNodes = 4096 }),
 		_clock = 0,
 		_destroyed = false,
 		_onError = onError,

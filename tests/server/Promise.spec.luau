@@ -270,4 +270,76 @@ return function(t, Constella)
 			expect(#reported).toBe(0)
 		end)
 	end)
+
+	t.describe("waiting threads and memory", function()
+		t.it("skips an awaiting thread that was cancelled and still resumes the others", function()
+			local resolvePromise
+			local promise = Promise.new(function(resolve)
+				resolvePromise = resolve
+			end)
+			local cancelled = task.spawn(function()
+				promise:Await()
+			end)
+			local resumed = false
+			task.spawn(function()
+				promise:Await()
+				resumed = true
+			end)
+			task.cancel(cancelled)
+			expect(function()
+				resolvePromise("done")
+			end).toNotThrow()
+			expect(resumed).toBe(true)
+			expect(promise:GetStatus()).toBe("Resolved")
+		end)
+
+		t.it("a settled promise does not keep the promise it was chained from alive", function()
+			local weak = setmetatable({}, { __mode = "k" })
+			local child
+			-- On a thread that finishes, so no stack slot of this one holds them.
+			task.spawn(function()
+				local payload = {}
+				local parent = Promise.resolve(payload)
+				weak[payload] = true
+				weak[parent] = true
+				child = parent:Then(function()
+					return 1
+				end)
+			end)
+			expect(child:GetStatus()).toBe("Resolved")
+			expect(t.collected(weak)).toBe(true)
+			expect(child:Expect()).toBe(1)
+		end)
+
+		t.it("drops cancel hooks once the promise has settled", function()
+			local weak = setmetatable({}, { __mode = "k" })
+			local promise, lateHookRan, lateResult
+			task.spawn(function()
+				-- Captures a fresh table: Luau reuses closures that capture
+				-- nothing, and those are never collected.
+				local token = {}
+				local hook = function()
+					return token
+				end
+				weak[hook] = true
+				promise = Promise.new(function(resolve, _, onCancel)
+					onCancel(hook)
+					resolve(1)
+				end)
+				-- Registering after settling neither runs nor keeps the hook.
+				local late = function()
+					lateHookRan = true
+				end
+				weak[late] = true
+				Promise.new(function(resolve, _, onCancel)
+					resolve(2)
+					lateResult = onCancel(late)
+				end)
+			end)
+			expect(promise:GetStatus()).toBe("Resolved")
+			expect(lateResult).toBe(false)
+			expect(t.collected(weak)).toBe(true)
+			expect(lateHookRan).toBeNil()
+		end)
+	end)
 end

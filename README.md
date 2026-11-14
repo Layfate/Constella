@@ -29,10 +29,10 @@
 ```toml
 # wally.toml
 [dependencies]
-Constella = "zense/constella@0.2.0"
+Constella = "zense/constella@0.3.0"
 ```
 
-Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
+Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). Wally and pesde start with 0.3.0; see [Installation](#installation).
 
 - **Use only what you need.** Every module loads on first use. `require(Constella.Signal)` loads Signal and nothing else, and no system starts unless you start it.
 - **Safe networking by default.** Every client request passes rate limiting, payload caps, schema validation and your authorization check before your code runs. Clients only ever see generic error codes; the details stay on the server.
@@ -70,8 +70,8 @@ Each module has a well-known alternative. Constella's case is that all 13 share 
 | **Secure remotes** | Plain RemoteEvents; Zap, ByteNet or Blink | [Network](docs/Network.md) | **Security first:** every client request is rate limited, size capped, schema checked and authorized before your handler runs, and clients only see generic error codes. Zap, ByteNet and Blink focus on compact serialization and bandwidth instead. The two approaches can be combined |
 | Player data | ProfileStore directly | [Data](docs/Data.md) | Built **on** ProfileStore: adds migrations, template reconciliation, `Changed` signals, kick-on-session-loss and a shutdown budget that waits for every save |
 | App structure | Knit | [Core](docs/Core.md) | Explicit apps instead of global singletons: dependency order, cycle and environment checks before any code runs, and rollback when startup fails |
-| Cleanup | Trove, Janitor, Maid | [Cleanup](docs/Cleanup.md) | About 9× faster than Trove for functions, with half the memory ([benchmarks](docs/Benchmarks.md)) |
-| Signals | GoodSignal, sleitnick/signal | [Signal](docs/Signal.md) | Catches each listener's errors and calls listeners in order. 5–9% slower than sleitnick/signal with the same error catching, and uses 9% less memory |
+| Cleanup | Trove, Janitor, Maid | [Cleanup](docs/Cleanup.md) | About 6× faster than Trove for functions on a Roblox server, with half the memory ([benchmarks](docs/Benchmarks.md)) |
+| Signals | GoodSignal, sleitnick/signal | [Signal](docs/Signal.md) | Catches each listener's errors and calls listeners in order. `Fire` is as fast as sleitnick/signal with the same error catching (within 1%), `Connect`+`Disconnect` is slower, and it uses 9% less memory |
 | Promises | evaera/promise | [Promise](docs/Promise.md) | A smaller, strictly typed core: cancellation, timeouts, `all`/`race`/`allSettled`, retry with backoff. evaera/promise has a larger API and a long track record |
 | Reactive state | Fusion | [State](docs/State.md) | Small reactive values with property bindings, not a UI framework. For building whole interfaces declaratively, Fusion does far more |
 | Zones | ZonePlus | [Zone](docs/Zone.md) | Simple point tests against boxes and spheres, with hysteresis at the edges. ZonePlus supports more shapes and features |
@@ -182,11 +182,13 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 
 **Download (easiest).** Get `Constella.rbxm` from the [latest release](https://github.com/Layfate/Constella/releases/latest). In Studio, right-click `ReplicatedStorage` → **Insert from File…** and choose the file. Then move the inserted `Constella` module into a Folder named `Packages`, so the path is `ReplicatedStorage.Packages.Constella`.
 
+> **Wally and pesde:** Constella is published to both registries starting with 0.3.0. Until that release is out, use the download above or the model file below.
+
 **Wally.** Add Constella to `wally.toml`, then run `wally install`:
 
 ```toml
 [dependencies]
-Constella = "zense/constella@0.2.0"
+Constella = "zense/constella@0.3.0"
 ```
 
 **pesde.**

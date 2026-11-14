@@ -56,20 +56,31 @@ end
 
 -- Batch bookkeeping. This is private scheduling state, not a service: it
 -- never holds user data beyond the duration of a single flush.
+--
+-- States waiting to notify, with the value each had before the batch, in
+-- two parallel arrays (an old value may be nil, so the count is explicit).
+-- A flush round swaps them with a spare pair and clears the drained pair
+-- afterwards, so a Set allocates nothing.
 local batchDepth = 0
-local pendingOrder: { any } = {}
-local pendingOld: { [any]: { value: any } } = {}
+local pendingStates: { any } = {}
+local pendingOlds: { any } = {}
+local pendingCount = 0
+local pendingSet: { [any]: true } = {}
+local spareStates: { any } = {}
+local spareOlds: { any } = {}
 
 local function schedule(state: any, oldValue: any)
-	if pendingOld[state] == nil then
-		pendingOld[state] = { value = oldValue }
-		table.insert(pendingOrder, state)
+	if not pendingSet[state] then
+		pendingSet[state] = true
+		pendingCount += 1
+		pendingStates[pendingCount] = state
+		pendingOlds[pendingCount] = oldValue
 	end
 end
 
 local function flushRounds()
 	local rounds = 0
-	while #pendingOrder > 0 do
+	while pendingCount > 0 do
 		rounds += 1
 		if rounds > MAX_FLUSH_ROUNDS then
 			error(
@@ -79,14 +90,20 @@ local function flushRounds()
 				0
 			)
 		end
-		local order, olds = pendingOrder, pendingOld
-		pendingOrder, pendingOld = {}, {}
-		for _, state in order do
-			local oldValue = olds[state].value
+		-- Writes made by subscribers during this round go to the next one.
+		local states, olds, count = pendingStates, pendingOlds, pendingCount
+		pendingStates, pendingOlds, pendingCount = spareStates, spareOlds, 0
+		table.clear(pendingSet)
+		for index = 1, count do
+			local state = states[index]
+			local oldValue = olds[index]
 			if not state._destroyed and not state._equals(state._value, oldValue) then
 				state._changed:Fire(state._value, oldValue)
 			end
 		end
+		table.clear(states)
+		table.clear(olds)
+		spareStates, spareOlds = states, olds
 	end
 end
 
@@ -95,7 +112,9 @@ local function flush()
 	local ok, err = pcall(flushRounds :: any)
 	batchDepth -= 1
 	if not ok then
-		pendingOrder, pendingOld = {}, {}
+		-- The failed round's arrays may be half-drained: start over clean.
+		pendingStates, pendingOlds, pendingCount, pendingSet = {}, {}, 0, {}
+		spareStates, spareOlds = {}, {}
 		error(err, 0)
 	end
 end
@@ -223,6 +242,15 @@ end
 local function evaluate(self: any): any
 	local sources = self._sources
 	local count = #sources
+	-- Most computed states have one to three sources: pass those directly
+	-- instead of building an array on every recompute.
+	if count == 1 then
+		return self._compute(sources[1]._value)
+	elseif count == 2 then
+		return self._compute(sources[1]._value, sources[2]._value)
+	elseif count == 3 then
+		return self._compute(sources[1]._value, sources[2]._value, sources[3]._value)
+	end
 	local values = table.create(count)
 	for index, source in sources do
 		values[index] = source._value
