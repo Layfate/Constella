@@ -129,6 +129,16 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	end
 	local rng = Random.new(1)
 
+	-- Distinct functions to hand to cleanup managers. (Adding the same
+	-- function many times isn't a fair test: Janitor keys entries by the
+	-- object, so it would keep just one.)
+	local distinct = table.create(5000)
+	for index = 1, 5000 do
+		distinct[index] = function()
+			return index
+		end
+	end
+
 	local function plain(fn)
 		return fn
 	end
@@ -181,8 +191,8 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 		case("Cleanup", "Add + Clean 100 functions", label, 300, function(n)
 			for _ = 1, n do
 				local manager = adapter.new()
-				for _ = 1, 100 do
-					adapter.addFunction(manager, noop)
+				for index = 1, 100 do
+					adapter.addFunction(manager, distinct[index])
 				end
 				adapter.clean(manager)
 			end
@@ -353,6 +363,12 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 				Delta = delta,
 				OnError = noop,
 			}))
+			if delta and replicator._delta == nil then
+				-- This build has no Delta mode; comparing it would measure
+				-- full sends under the Delta label.
+				replicator:Destroy()
+				continue
+			end
 			replicator._update.FireList = noop
 			local share = State.new(inventory(0))
 			replicator:Share("Inventory", share)
@@ -647,12 +663,14 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	if LemonSignal then
 		memoryCase("Connected listener", "LemonSignal", listeners(LemonSignal.new))
 	end
+	-- The functions already exist (`distinct`), so only the manager's own
+	-- storage is counted.
 	for _, build in builds do
 		local Cleanup = build.Constella.Cleanup
 		memoryCase("Tracked function", "Constella.Cleanup" .. build.suffix, function(count)
 			local manager = Cleanup.new()
-			for _ = 1, count do
-				manager:Add(noop)
+			for index = 1, count do
+				manager:Add(distinct[index])
 			end
 			return manager
 		end)
@@ -660,8 +678,8 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	if Trove then
 		memoryCase("Tracked function", "sleitnick/trove", function(count)
 			local manager = Trove.new()
-			for _ = 1, count do
-				manager:Add(noop)
+			for index = 1, count do
+				manager:Add(distinct[index])
 			end
 			return manager
 		end)
@@ -669,8 +687,8 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	if Janitor then
 		memoryCase("Tracked function", "Janitor", function(count)
 			local manager = Janitor.new()
-			for _ = 1, count do
-				manager:Add(noop, true)
+			for index = 1, count do
+				manager:Add(distinct[index], true)
 			end
 			return manager
 		end)
@@ -735,6 +753,10 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 				Delta = delta,
 				OnError = noop,
 			})
+			if delta and replicator._delta == nil then
+				replicator:Destroy()
+				continue
+			end
 			local sent = {}
 			replicator._update.FireList = function(_, _players, ...)
 				table.insert(sent, table.pack(...))

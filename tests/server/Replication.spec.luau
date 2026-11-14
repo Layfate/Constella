@@ -343,6 +343,46 @@ return function(t, Constella)
 			server:Destroy()
 		end)
 
+		t.it("keeps a client in sync over many random updates, including in-place edits", function()
+			local server, sent = deltaServer()
+			local rng = Random.new(7)
+			local state = State.new({ k1 = 1, k2 = { k3 = { 1, 2, 3 } } })
+			server:Share("Random", state)
+			local mirror = Replication._newMirror()
+			local resyncs = 0
+			mirror._onResync = function()
+				resyncs += 1
+			end
+			local delivered = 0
+			local function deliver()
+				for index = delivered + 1, #sent do
+					local message = sent[index]
+					mirror:Apply(message[1], message[2], message[3], message[4], message[5])
+				end
+				delivered = #sent
+			end
+			deliver()
+			for _ = 1, 300 do
+				local current = state:Get()
+				if rng:NextNumber() < 0.3 then
+					-- Edit the current table (and a nested one) in place, then
+					-- set a shallow copy.
+					current.k1 = rng:NextInteger(1, 100)
+					if type(current.k2) == "table" then
+						current.k2.k4 = rng:NextInteger(1, 100)
+					end
+					state:Set(table.clone(current))
+				else
+					state:Set(mutate(rng, current, 0))
+				end
+				deliver()
+				expect(deepEqual(mirror:Get("Random"):Get(), state:Get())).toBe(true)
+			end
+			expect(resyncs).toBe(0)
+			mirror:Destroy()
+			server:Destroy()
+		end)
+
 		t.it("sends the whole value when a patch wouldn't be smaller", function()
 			local server, sent = deltaServer()
 			local state = State.new({ A = 1 })

@@ -90,30 +90,6 @@ local function checkName(name: any, level: number)
 	end
 end
 
--- Returns nil when `value` can be sent, otherwise the reason it cannot.
-local function unsupported(value: any, depth: number?): string?
-	local valueType = typeof(value)
-	if valueType == "function" or valueType == "thread" or valueType == "userdata" then
-		return ("%s values cannot be replicated"):format(valueType)
-	end
-	if valueType == "table" then
-		if getmetatable(value) ~= nil then
-			return "tables with metatables cannot be replicated"
-		end
-		local level = depth or 0
-		if level > 16 then
-			return "table is nested too deeply"
-		end
-		for key, item in value do
-			local reason = unsupported(key, level + 1) or unsupported(item, level + 1)
-			if reason then
-				return reason
-			end
-		end
-	end
-	return nil
-end
-
 -- Delta patches ---------------------------------------------------------------
 -- A patch turns one table into another:
 --   k, v  parallel arrays: keys set to a new value
@@ -138,29 +114,50 @@ local function deepCopy(value: any): any
 	return copy
 end
 
-local function diff(old: { [any]: any }, new: { [any]: any }, depth: number): { [string]: any }?
+-- Compares `old` (the private copy of what clients have) with the game's
+-- new value. Returns the patch (nil if nothing changed) and the new private
+-- copy, which reuses every unchanged part of `old`, so an update only walks
+-- the value once and only copies what changed.
+local function diffCopy(old: { [any]: any }, new: { [any]: any }, depth: number): ({ [string]: any }?, { [any]: any })
 	local patch: { [string]: any }? = nil
+	local changedTables: { [any]: any }? = nil
 	for key, value in new do
 		local previous = old[key]
-		if previous ~= value then
-			local target: { [string]: any } = patch or {}
-			patch = target
-			if type(previous) == "table" and type(value) == "table" and depth < MAX_PATCH_DEPTH then
-				local nested = diff(previous, value, depth + 1)
+		if type(value) == "table" then
+			if type(previous) == "table" and depth < MAX_PATCH_DEPTH then
+				local nested, nestedCopy = diffCopy(previous, value, depth + 1)
 				if nested then
+					local target: { [string]: any } = patch or {}
+					patch = target
 					if target.n == nil then
 						target.n, target.p = {}, {}
 					end
 					table.insert(target.n, key)
 					table.insert(target.p, nested)
+					local copies = changedTables or {}
+					changedTables = copies
+					copies[key] = nestedCopy
 				end
 			else
+				local target: { [string]: any } = patch or {}
+				patch = target
 				if target.k == nil then
 					target.k, target.v = {}, {}
 				end
 				table.insert(target.k, key)
 				table.insert(target.v, value)
+				local copies = changedTables or {}
+				changedTables = copies
+				copies[key] = deepCopy(value)
 			end
+		elseif previous ~= value then
+			local target: { [string]: any } = patch or {}
+			patch = target
+			if target.k == nil then
+				target.k, target.v = {}, {}
+			end
+			table.insert(target.k, key)
+			table.insert(target.v, value)
 		end
 	end
 	for key in old do
@@ -173,11 +170,16 @@ local function diff(old: { [any]: any }, new: { [any]: any }, depth: number): { 
 			table.insert(target.r, key)
 		end
 	end
-	if patch and next(patch) == nil then
-		-- Only nested tables that were replaced by equal copies.
-		return nil
+	if patch == nil then
+		return nil, old
 	end
-	return patch
+	local copy = table.clone(new)
+	for key, value in copy do
+		if type(value) == "table" then
+			copy[key] = if changedTables and changedTables[key] ~= nil then changedTables[key] else old[key]
+		end
+	end
+	return patch, copy
 end
 
 -- Returns a new table: `base` with `patch` applied (unchanged nested tables
@@ -252,13 +254,9 @@ end
 -- Returns nil and the estimated size when `value` may be sent, otherwise
 -- why it may not.
 function ServerClass._validate(self: any, value: any): (string?, number?)
-	local reason = unsupported(value)
-	if reason ~= nil then
-		return reason, nil
-	end
-	local size, sizeReason = Network.Payload.measure(self._limits, value)
+	local size, reason = Network.Payload.measureReplicable(self._limits, value)
 	if size == nil then
-		return sizeReason, nil
+		return reason, nil
 	end
 	return nil, size
 end
@@ -288,18 +286,22 @@ function ServerClass._publish(self: any, share: any, value: any)
 	share.value = value
 	share.version = self:_nextVersion()
 	if self._delta then
-		-- What clients hold, at version `base`: a private copy, because the
-		-- game may have mutated the old table in place before setting a new one.
-		share.sent = deepCopy(value)
+		-- `sent` is what clients hold, at version `base`: a private copy,
+		-- because the game may have mutated the old table in place before
+		-- setting a new one.
 		if type(sent) == "table" and type(value) == "table" then
+			local patch, copy = diffCopy(sent, value, 1)
+			share.sent = copy
 			-- An empty patch still moves clients to the new version (and to a
 			-- new table, like the server's state).
-			local patch = diff(sent, value, 1) or {}
-			local patchSize = Network.Payload.measure(self._limits, patch)
+			local message = patch or {}
+			local patchSize = Network.Payload.measure(self._limits, message)
 			if patchSize ~= nil and patchSize < (size :: number) then
-				self._update:FireList(self:_audience(share), share.name, patch, share.version, false, base)
+				self._update:FireList(self:_audience(share), share.name, message, share.version, false, base)
 				return
 			end
+		else
+			share.sent = deepCopy(value)
 		end
 	end
 	self:_broadcast(share, false)
@@ -711,6 +713,8 @@ return table.freeze({
 	Server = table.freeze(Server),
 	Client = table.freeze(Client),
 	_newMirror = newMirror,
-	_diff = diff,
+	_diff = function(old: any, new: any, depth: number): any
+		return (diffCopy(old, new, depth))
+	end,
 	_applyPatch = applyPatch,
 })

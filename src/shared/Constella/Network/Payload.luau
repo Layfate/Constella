@@ -85,6 +85,57 @@ local function visit(
 	return total, nodes, nil
 end
 
+-- Like visit, and also refuses what can't be replicated: functions, threads,
+-- userdata and tables with metatables. Used by Replication, so checking and
+-- measuring a value takes one walk instead of two.
+local function visitReplicable(
+	value: any,
+	depth: number,
+	total: number,
+	nodes: number,
+	maxBytes: number,
+	maxDepth: number,
+	maxNodes: number
+): (number, number, string?)
+	nodes += 1
+	if nodes > maxNodes then
+		return total, nodes, ("payload has more than %d values"):format(maxNodes)
+	end
+	local valueType = typeof(value)
+	if valueType == "string" then
+		total += #value + 4
+	elseif valueType == "table" then
+		if getmetatable(value) ~= nil then
+			return total, nodes, "tables with metatables cannot be replicated"
+		end
+		if depth >= maxDepth then
+			return total, nodes, ("payload is nested deeper than %d levels"):format(maxDepth)
+		end
+		total += 4
+		local failure: string?
+		for key, item in value do
+			total, nodes, failure = visitReplicable(key, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
+			if failure then
+				return total, nodes, failure
+			end
+			total, nodes, failure = visitReplicable(item, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
+			if failure then
+				return total, nodes, failure
+			end
+		end
+	elseif valueType == "function" or valueType == "thread" or valueType == "userdata" then
+		return total, nodes, ("%s values cannot be replicated"):format(valueType)
+	elseif valueType == "buffer" then
+		total += 5 + buffer.len(value)
+	else
+		total += FIXED_SIZES[valueType] or 16
+	end
+	if total > maxBytes then
+		return total, nodes, ("payload exceeds %d bytes"):format(maxBytes)
+	end
+	return total, nodes, nil
+end
+
 --- Returns the estimated size in bytes, or nil and a reason if the payload
 --- exceeds `limits` (size, nesting depth or number of values).
 function Payload.measure(limits: Limits, ...: any): (number?, string?)
@@ -98,6 +149,25 @@ function Payload.measure(limits: Limits, ...: any): (number?, string?)
 		if failure then
 			return nil, failure
 		end
+	end
+	return total
+end
+
+--- Like `measure` for one value, and also returns nil and a reason for
+--- anything that can't be replicated (functions, threads, userdata, tables
+--- with metatables).
+function Payload.measureReplicable(limits: Limits, value: any): (number?, string?)
+	local total, _, failure = visitReplicable(
+		value,
+		0,
+		0,
+		0,
+		limits.MaxBytes,
+		limits.MaxDepth or DEFAULT_MAX_DEPTH,
+		limits.MaxNodes or DEFAULT_MAX_NODES
+	)
+	if failure then
+		return nil, failure
 	end
 	return total
 end
