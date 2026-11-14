@@ -314,14 +314,17 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	end)
 
 	-- Report order: groups and cases in order of first appearance, so every
-	-- implementation of a case sits together; within a case, the order the
-	-- implementations were added.
+	-- implementation of a case sits together. Within a case, the builds of
+	-- one implementation are next to each other ("X [this build]" then
+	-- "X [baseline]"), then the next implementation.
 	local firstSeen = {}
 	for index, entry in cases do
-		entry.position = index
 		firstSeen[entry.group] = firstSeen[entry.group] or index
 		local caseKey = entry.group .. "\0" .. entry.name
 		firstSeen[caseKey] = firstSeen[caseKey] or index
+		local implementationKey = caseKey .. "\0" .. (string.gsub(entry.implementation, " %[[^%]]*%]$", ""))
+		firstSeen[implementationKey] = firstSeen[implementationKey] or index
+		entry.position = firstSeen[implementationKey] + index / (#cases + 1)
 	end
 	table.sort(cases, function(a, b)
 		local groupA, groupB = firstSeen[a.group], firstSeen[b.group]
@@ -350,9 +353,14 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	-- Memory ----------------------------------------------------------------
 	local COUNT = 5000
 	local memory = {}
-	local function memoryCase(name, implementation, build)
-		table.insert(memory, { name, implementation, Bench.bytesPerObject(build, COUNT) })
+	local function memoryCase(name, implementation, build, count, trials)
+		local objects = count or COUNT
+		table.insert(memory, { name, implementation, Bench.bytesPerObject(build, objects, trials), objects })
 	end
+	-- Promises allocate several times more per object than a connection, so
+	-- 5,000 of them usually overlap a garbage collection step, which makes
+	-- the sample smaller. Smaller builds, more of them, avoid that.
+	local PROMISE_COUNT, PROMISE_TRIALS = 500, 61
 	for _, build in builds do
 		local Constella, suffix = build.Constella, build.suffix
 		memoryCase("Connected listener", "Constella.Signal" .. suffix, function(count)
@@ -393,20 +401,25 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	end
 	for _, build in builds do
 		local Promise, suffix = build.Constella.Promise, build.suffix
+		-- Each includes the 16-byte array slot that keeps the promise.
 		memoryCase("Resolved promise", "Constella.Promise" .. suffix, function(count)
 			local kept = table.create(count)
 			for index = 1, count do
 				kept[index] = Promise.resolve(index)
 			end
 			return kept
-		end)
-		memoryCase("Settled promise with one Then", "Constella.Promise" .. suffix, function(count)
+		end, PROMISE_COUNT, PROMISE_TRIALS)
+		-- A pending child: the promise, its link to the parent and the
+		-- parent's queue entry for it. (Promise.new is not measured: its
+		-- executor thread is garbage straight away and would count too.)
+		memoryCase("Pending promise from Then", "Constella.Promise" .. suffix, function(count)
+			local root = Promise.new(noop)
 			local kept = table.create(count)
 			for index = 1, count do
-				kept[index] = Promise.resolve(index):Then(one)
+				kept[index] = root:Then(one)
 			end
-			return kept
-		end)
+			return { root, kept }
+		end, PROMISE_COUNT, PROMISE_TRIALS)
 	end
 
 	-- Leak checks: the owner stays alive; released objects must be freed. ------
@@ -573,10 +586,10 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	end
 
 	table.insert(lines, "")
-	table.insert(lines, ("| Memory per object (%d objects) | Implementation | Bytes |"):format(COUNT))
-	table.insert(lines, "| --- | --- | ---: |")
+	table.insert(lines, "| Memory per object | Implementation | Bytes | Objects per build |")
+	table.insert(lines, "| --- | --- | ---: | ---: |")
 	for _, row in memory do
-		table.insert(lines, ("| %s | %s | %d |"):format(row[1], row[2], math.floor(row[3] + 0.5)))
+		table.insert(lines, ("| %s | %s | %d | %d |"):format(row[1], row[2], math.floor(row[3] + 0.5), row[4]))
 	end
 	table.insert(lines, "")
 	table.insert(lines, "| Leak check | Released | Still alive | Seconds |")
