@@ -100,6 +100,8 @@ The `roblox-tests` job builds `ci.project.json` (the package, the tests in `Serv
 
 Keep the CI place closed in Studio: while it's open, publishing to it fails with HTTP 409.
 
+The integration tests also work in Studio's **Server & Clients** mode: every client runs its half, and the server checks each player against its own counts.
+
 ## Releasing
 
 1. Set the new version in `src/shared/Constella/init.luau`, `wally.toml`, `pesde.toml`, the README badge and install lines, `docs/README.md` and `tests/server/Root.spec.luau`.

@@ -31,6 +31,7 @@ game:BindToClose(function() store:Shutdown(20) end)
 | Constella's layer: migrations, reconciliation, lifecycle, session loss, shutdown budget | `MemoryAdapter`, which simulates session locking, throttling, failed saves, latency and several servers | ✅ Tested |
 | `ProfileStoreAdapter` with **real ProfileStore 1.0.3** | ProfileStore's own mock mode, which runs its real session, save and end-session code on an in-memory store ([`tests/server/ProfileStore.spec.luau`](../tests/server/ProfileStore.spec.luau)) | ✅ Tested |
 | `ProfileStoreAdapter` on **real DataStores**, one server | The `live DataStores` tests (save and reload, release, several players, cleanup of the test keys). They run on a Roblox server in every CI run, and in Play mode in Studio with API access | ✅ Tested |
+| Real DataStores with **several real players on one server** | Studio Server & Clients with 5 players: all 5 loaded, two left at the same moment, one left while the server shut down with two still active. Every value was saved and `Shutdown` returned `true` (2026-11-14) | ✅ Tested |
 | Real DataStores across real servers: session locking when a player joins a second server, throttling under load, live shutdowns | Needs live servers, not Studio | ⏳ **Not yet verified** |
 
 **Before real players depend on it,** run `Data` with real ProfileStore in a separate published experience. Simulate disconnects, server shutdowns, rejoins (including joining a second server) and high player counts.
