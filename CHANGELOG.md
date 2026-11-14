@@ -2,6 +2,11 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
+## Unreleased
+
+### Verified
+- **Data:** the live DataStore tests pass on real DataStores through ProfileStore 1.0.3 in a published test place (one Studio server). Live multi-server testing is still open, so Data stays beta.
+
 ## 0.2.0 — 2026-11-14
 
 Verification and performance release: fixes from two code reviews (each with a regression test), Data verified against real ProfileStore, a faster Signal, a benchmark suite, and CI. No modules or public functions were removed.

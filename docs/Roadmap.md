@@ -30,7 +30,7 @@ This stage proved that what exists works well. No new modules were added.
 
 Still verification work. No new modules are planned.
 
-- **Data:** run it against live DataStores in a separate published experience (disconnects, shutdowns, rejoining a second server, high player counts). Data stays beta until then.
+- **Data:** ✅ real DataStores pass in a single Studio server. Still to do: live servers (disconnects, shutdowns, rejoining a second server, high player counts). Data stays beta until then.
 - **Pool:** measure memory over long sessions.
 
 ## Toward 1.0

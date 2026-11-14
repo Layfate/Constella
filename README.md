@@ -41,7 +41,7 @@ Also available as a ready-to-insert model file (**[download `Constella.rbxm`](ht
 - **Tested and measured.** Unit tests, Data failure simulations, tests against real ProfileStore, Play-mode integration tests with a hostile client against real remotes, and published [benchmarks](docs/Benchmarks.md) against other libraries and hand-written baselines, including where Constella is slower.
 
 > [!IMPORTANT]
-> `Constella.Data` is **beta**. It runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately. It's tested against real ProfileStore 1.0.3 in ProfileStore's mock mode, but not yet against live DataStores. Test it in a separate published experience before real player data depends on it. See [Data](docs/Data.md).
+> `Constella.Data` is **beta**. It runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately. It's tested against real ProfileStore 1.0.3, in mock mode and on real DataStores in a single Studio server, but not yet across live servers. Test it in a separate published experience before real player data depends on it. See [Data](docs/Data.md).
 
 ## Modules
 
