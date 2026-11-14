@@ -161,11 +161,18 @@ function ZoneClass.Track(self: any, item: any, getPosition: (() -> Vector3?)?)
 	if self._entries[item] then
 		return
 	end
-	local getter = getPosition or defaultPositionGetter(item)
+	local getter = getPosition
+	-- The built-in getters only read properties, so they can't raise and
+	-- are called without a protected call.
+	local trusted = false
+	if getter == nil then
+		getter = defaultPositionGetter(item)
+		trusted = getter ~= nil
+	end
 	if type(getter) ~= "function" then
 		error(PREFIX .. ("Cannot get a position from %s; pass getPosition"):format(typeof(item)), 2)
 	end
-	local entry = { item = item, getPosition = getter, inside = false }
+	local entry = { item = item, getPosition = getter, trusted = trusted, inside = false }
 	self._entries[item] = entry
 	table.insert(self._order, entry)
 	if typeof(item) == "Instance" and not item:IsA("Player") then
@@ -234,17 +241,38 @@ function ZoneClass.Step(self: any)
 	end
 	local kind, a, b = self._geometry()
 	local padding = self._exitPadding
-	-- Created on the first change only: most steps change nothing.
+	-- Created on the first change (or failure) only: most steps have none.
 	local changes: { any }? = nil
-	-- A copy, because position callbacks are user code and may Track/Untrack.
-	local order: { any } = table.clone(self._order)
-	for _, entry in order do
-		local ok, position = pcall(entry.getPosition)
-		if not ok then
-			self._onError(
-				PREFIX .. ("Position callback failed for %s: %s"):format(tostring(entry.item), tostring(position))
-			)
-			position = nil
+	local failures: { string }? = nil
+	-- Iterate over a copy, because position callbacks are user code and may
+	-- Track or Untrack. The copy goes into a buffer the zone reuses, unless
+	-- a callback starts another Step of this zone while this one runs.
+	local source = self._order
+	local count = #source
+	local reentered = self._stepping
+	local order: { any } = if reentered then table.clone(source) else self._scratch
+	if not reentered then
+		table.move(source, 1, count, 1, order)
+		self._stepping = true
+	end
+	for index = 1, count do
+		local entry = order[index]
+		local position
+		if entry.trusted then
+			position = entry.getPosition()
+		else
+			local ok, result = pcall(entry.getPosition)
+			if ok then
+				position = result
+			else
+				-- Reported after the loop, so OnError (user code) can't
+				-- interrupt it and leave the buffer filled.
+				failures = failures or {}
+				table.insert(
+					failures :: { string },
+					PREFIX .. ("Position callback failed for %s: %s"):format(tostring(entry.item), tostring(result))
+				)
+			end
 		end
 		local inside = false
 		if typeof(position) == "Vector3" then
@@ -257,6 +285,16 @@ function ZoneClass.Step(self: any)
 			else
 				changes = { entry }
 			end
+		end
+	end
+	if not reentered then
+		-- Don't keep untracked items alive through the buffer.
+		table.clear(order)
+		self._stepping = false
+	end
+	if failures then
+		for _, message in failures do
+			self._onError(message)
 		end
 	end
 	if changes == nil then
@@ -314,6 +352,8 @@ function Zone.new(shape: Shape, options: Options?): Zone
 		_entries = {},
 		_order = {},
 		_cleanup = Cleanup.new(),
+		_scratch = {},
+		_stepping = false,
 		_destroyed = false,
 		_trackingPlayers = false,
 		_onError = opts.OnError or function(message: string)

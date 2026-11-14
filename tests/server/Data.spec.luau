@@ -141,6 +141,13 @@ return function(t, Constella)
 				promise:Await()
 				settled = true
 			end)
+			local deadline = os.clock() + 5
+			while not settled and os.clock() < deadline do
+				task.wait()
+			end
+			-- Promise handlers run on recycled threads; let an idle one run
+			-- another job so its unused stack slots don't hold the last one.
+			Constella.Promise.resolve(nil):Then(function() end)
 			expect(t.collected(weak)).toBe(true)
 			expect(settled).toBe(true)
 			expect(store:GetStats().Loading).toBe(0)

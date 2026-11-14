@@ -56,7 +56,8 @@ end
 -- Layout: internal fields live in the table's array part, which Luau stores
 -- compactly; only the public `Connected` field uses the hash part.
 --   [1] callback   [2] signal   [3] previous (or false)   [4] next (or false)
---   [5] id: increases with every Connect; negative for Once connections
+--   [5] id: increases with every Connect (one counter shared by every
+--       signal, so no per-signal field to update); negative for Once
 --
 -- Fire only visits ids that existed when it started, which gives snapshot
 -- semantics without copying the list. A disconnected node keeps its next
@@ -65,6 +66,9 @@ end
 -- alive. DisconnectAll (and Destroy) also clear every node's signal and
 -- previous pointer: then nothing in the chain references the signal.
 local CALLBACK, SIGNAL, PREVIOUS, NEXT, ID = 1, 2, 3, 4, 5
+
+-- The id of the most recent connection, across all signals.
+local lastConnectionId = 0
 
 -- Listeners run on recycled "runner" threads instead of a new coroutine
 -- per call. A runner marks itself busy while a listener runs; if that
@@ -127,7 +131,6 @@ function ConnectionClass.Disconnect(self: any)
 	else
 		signal._tail = previous or nil
 	end
-	signal._count -= 1
 	self[CALLBACK] = false
 end
 ConnectionClass.Destroy = ConnectionClass.Disconnect
@@ -148,8 +151,8 @@ local function append(self: any, callback: any, once: boolean, method: string): 
 	if self._destroyed or type(callback) ~= "function" then
 		connectError(self, callback, method)
 	end
-	local id = self._nextId
-	self._nextId = id + 1
+	lastConnectionId += 1
+	local id = lastConnectionId
 	local tail = self._tail
 	-- Array slots keep connections compact; Connected is the public field.
 	-- selene: allow(mixed_table)
@@ -167,7 +170,6 @@ local function append(self: any, callback: any, once: boolean, method: string): 
 		self._head = connection
 	end
 	self._tail = connection
-	self._count += 1
 	return connection
 end
 
@@ -175,8 +177,8 @@ function SignalClass.Connect(self: any, callback: (...any) -> ()): Connection
 	if self._destroyed or type(callback) ~= "function" then
 		connectError(self, callback, "Connect")
 	end
-	local id = self._nextId
-	self._nextId = id + 1
+	lastConnectionId += 1
+	local id = lastConnectionId
 	local tail = self._tail
 	-- Array slots per the layout above; Connected is the public field.
 	-- selene: allow(mixed_table)
@@ -188,7 +190,6 @@ function SignalClass.Connect(self: any, callback: (...any) -> ()): Connection
 		self._head = connection
 	end
 	self._tail = connection
-	self._count += 1
 	return connection
 end
 
@@ -208,14 +209,12 @@ function SignalClass.Wait(self: any): ...any
 end
 
 function SignalClass.Fire(self: any, ...: any)
-	if self._destroyed then
-		return
-	end
+	-- A destroyed signal has no connections, so it returns here too.
 	local node = self._head
 	if not node then
 		return
 	end
-	local lastId = self._nextId - 1
+	local lastId = lastConnectionId
 	local onError = self._onError
 	-- Dispatch is written out here (one call fewer per listener). A runner
 	-- clears freeRunner while its listener runs and restores it when the
@@ -262,7 +261,6 @@ function SignalClass.DisconnectAll(self: any)
 	end
 	self._head = nil
 	self._tail = nil
-	self._count = 0
 end
 
 function SignalClass.Destroy(self: any)
@@ -273,8 +271,16 @@ function SignalClass.Destroy(self: any)
 	SignalClass.DisconnectAll(self)
 end
 
+--- Counts the connected listeners (walks the list; Connect and Disconnect
+--- don't keep a count, so they stay as cheap as possible).
 function SignalClass.GetConnectionCount(self: any): number
-	return self._count
+	local count = 0
+	local node = self._head
+	while node do
+		count += 1
+		node = node[NEXT]
+	end
+	return count
 end
 
 function SignalClass.IsDestroyed(self: any): boolean
@@ -300,8 +306,6 @@ function Signal.new<T...>(options: Options?): Signal<T...>
 	local self = setmetatable({
 		_head = nil,
 		_tail = nil,
-		_count = 0,
-		_nextId = 1,
 		_destroyed = false,
 		_onError = onError,
 	}, SignalClass)

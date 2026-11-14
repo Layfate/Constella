@@ -33,6 +33,15 @@
 	  is reported and the last valid value keeps being served.
 	- Tables are compared by reference (State semantics): set a new table
 	  to replicate a change.
+	- With `Delta = true`, a change from one table to another is sent as a
+	  patch (only the keys that changed, recursively) whenever that is
+	  smaller than the whole value. Patches are built from arrays and
+	  string-keyed fields, so they survive RemoteEvent serialization. A
+	  client that receives a patch before the value it builds on (during
+	  the initial sync) keeps it until that value arrives; if it can't be
+	  applied, the client fetches a fresh snapshot. Use it for tables that
+	  are arrays or string-keyed dictionaries, which is what remotes carry
+	  faithfully anyway.
 ]=]
 
 local Players = game:GetService("Players")
@@ -46,6 +55,8 @@ export type ServerOptions = {
 	OnError: ((message: string) -> ())?,
 	--- Largest value that may be sent, in estimated bytes. Defaults to 16384.
 	MaxValueBytes: number?,
+	--- Send table changes as patches when that is smaller. Defaults to false.
+	Delta: boolean?,
 }
 
 export type ClientOptions = {
@@ -103,6 +114,115 @@ local function unsupported(value: any, depth: number?): string?
 	return nil
 end
 
+-- Delta patches ---------------------------------------------------------------
+-- A patch turns one table into another:
+--   k, v  parallel arrays: keys set to a new value
+--   r     array: keys removed
+--   n, p  parallel arrays: keys whose table value changed, with a patch each
+-- Missing fields mean "nothing of that kind". Only arrays and string keys
+-- are used, so a patch arrives intact through a RemoteEvent.
+local MAX_PATCH_DEPTH = 16
+
+-- A copy of a replicable value that the server's own code can't reach, so
+-- mutating a shared table in place can't hide a change from the next diff.
+local function deepCopy(value: any): any
+	if type(value) ~= "table" then
+		return value
+	end
+	local copy = table.clone(value)
+	for key, item in copy do
+		if type(item) == "table" then
+			copy[key] = deepCopy(item)
+		end
+	end
+	return copy
+end
+
+local function diff(old: { [any]: any }, new: { [any]: any }, depth: number): { [string]: any }?
+	local patch: { [string]: any }? = nil
+	for key, value in new do
+		local previous = old[key]
+		if previous ~= value then
+			local target: { [string]: any } = patch or {}
+			patch = target
+			if type(previous) == "table" and type(value) == "table" and depth < MAX_PATCH_DEPTH then
+				local nested = diff(previous, value, depth + 1)
+				if nested then
+					if target.n == nil then
+						target.n, target.p = {}, {}
+					end
+					table.insert(target.n, key)
+					table.insert(target.p, nested)
+				end
+			else
+				if target.k == nil then
+					target.k, target.v = {}, {}
+				end
+				table.insert(target.k, key)
+				table.insert(target.v, value)
+			end
+		end
+	end
+	for key in old do
+		if new[key] == nil then
+			local target: { [string]: any } = patch or {}
+			patch = target
+			if target.r == nil then
+				target.r = {}
+			end
+			table.insert(target.r, key)
+		end
+	end
+	if patch and next(patch) == nil then
+		-- Only nested tables that were replaced by equal copies.
+		return nil
+	end
+	return patch
+end
+
+-- Returns a new table: `base` with `patch` applied (unchanged nested tables
+-- are shared), or nil if the patch is malformed.
+local function applyPatch(base: { [any]: any }, patch: any, depth: number): { [any]: any }?
+	if type(patch) ~= "table" or depth > MAX_PATCH_DEPTH then
+		return nil
+	end
+	local result = table.clone(base)
+	local keys, values = patch.k, patch.v
+	if keys ~= nil then
+		if type(keys) ~= "table" or type(values) ~= "table" then
+			return nil
+		end
+		for index, key in keys do
+			result[key] = values[index]
+		end
+	end
+	local removed = patch.r
+	if removed ~= nil then
+		if type(removed) ~= "table" then
+			return nil
+		end
+		for _, key in removed do
+			result[key] = nil
+		end
+	end
+	local nestedKeys, nestedPatches = patch.n, patch.p
+	if nestedKeys ~= nil then
+		if type(nestedKeys) ~= "table" or type(nestedPatches) ~= "table" then
+			return nil
+		end
+		for index, key in nestedKeys do
+			local current = result[key]
+			local updated =
+				applyPatch(if type(current) == "table" then current else {}, nestedPatches[index], depth + 1)
+			if updated == nil then
+				return nil
+			end
+			result[key] = updated
+		end
+	end
+	return result
+end
+
 -- Server -------------------------------------------------------------------
 
 local ShareClass = {}
@@ -129,17 +249,18 @@ function ServerClass._audience(_self: any, share: any): { any }
 	return Players:GetPlayers()
 end
 
--- Returns nil when `value` may be sent, otherwise why it may not.
-function ServerClass._validate(self: any, value: any): string?
+-- Returns nil and the estimated size when `value` may be sent, otherwise
+-- why it may not.
+function ServerClass._validate(self: any, value: any): (string?, number?)
 	local reason = unsupported(value)
 	if reason ~= nil then
-		return reason
+		return reason, nil
 	end
 	local size, sizeReason = Network.Payload.measure(self._limits, value)
 	if size == nil then
-		return sizeReason
+		return sizeReason, nil
 	end
-	return nil
+	return nil, size
 end
 
 -- Versions come from one counter per replicator that only ever increases,
@@ -158,13 +279,29 @@ end
 -- value is reported and never cached, so snapshots keep serving the last
 -- value that passed validation.
 function ServerClass._publish(self: any, share: any, value: any)
-	local reason = self:_validate(value)
+	local reason, size = self:_validate(value)
 	if reason then
 		self:_report(("'%s' was not replicated: %s"):format(share.name, reason))
 		return
 	end
+	local sent, base = share.sent, share.version
 	share.value = value
 	share.version = self:_nextVersion()
+	if self._delta then
+		-- What clients hold, at version `base`: a private copy, because the
+		-- game may have mutated the old table in place before setting a new one.
+		share.sent = deepCopy(value)
+		if type(sent) == "table" and type(value) == "table" then
+			-- An empty patch still moves clients to the new version (and to a
+			-- new table, like the server's state).
+			local patch = diff(sent, value, 1) or {}
+			local patchSize = Network.Payload.measure(self._limits, patch)
+			if patchSize ~= nil and patchSize < (size :: number) then
+				self._update:FireList(self:_audience(share), share.name, patch, share.version, false, base)
+				return
+			end
+		end
+	end
 	self:_broadcast(share, false)
 end
 
@@ -207,6 +344,8 @@ function ServerClass._addShare(self: any, player: any, name: string, state: any,
 		player = player,
 		state = state,
 		value = initial, -- last value that passed validation
+		-- With Delta: a private copy of what clients were last sent.
+		sent = if self._delta then deepCopy(initial) else nil,
 		version = self:_nextVersion(),
 		_active = true,
 		_server = self,
@@ -328,6 +467,9 @@ function Server.new(namespace: string, options: ServerOptions?): ReplicationServ
 	if type(maxBytes) ~= "number" or not (maxBytes > 0) or maxBytes == math.huge then
 		error(PREFIX .. "MaxValueBytes must be a positive number", 2)
 	end
+	if opts.Delta ~= nil and type(opts.Delta) ~= "boolean" then
+		error(PREFIX .. "Delta must be a boolean", 2)
+	end
 	local net = Network.Server.new(namespace, {
 		Parent = opts.Parent,
 		Logger = opts.Logger,
@@ -340,6 +482,7 @@ function Server.new(namespace: string, options: ServerOptions?): ReplicationServ
 		_nameKinds = {},
 		_nameCounts = {},
 		_limits = table.freeze({ MaxBytes = maxBytes, MaxDepth = 16, MaxNodes = 4096 }),
+		_delta = opts.Delta == true,
 		_clock = 0,
 		_destroyed = false,
 		_onError = onError,
@@ -380,8 +523,67 @@ function MirrorClass._entry(self: any, name: string): any
 	return entry
 end
 
---- Applies an update unless a newer version was already applied.
-function MirrorClass.Apply(self: any, name: any, value: any, version: any)
+-- Patches that arrived before the value they build on, per name, at most
+-- this many; beyond that the client resyncs instead.
+local MAX_HELD_PATCHES = 64
+
+function MirrorClass._requestResync(self: any)
+	local resync = self._onResync
+	if resync then
+		resync()
+	end
+end
+
+-- Applies `patch` to the entry's current value. Returns false if it can't.
+local function applyTo(entry: any, patch: any, version: number): boolean
+	local current = entry.value:Get()
+	local updated = if type(current) == "table" then applyPatch(current, patch, 1) else nil
+	if updated == nil then
+		return false
+	end
+	entry.version = version
+	entry.value:Set(updated)
+	return true
+end
+
+-- Applies held patches that now build on the current version, in order,
+-- and drops the ones that are out of date.
+function MirrorClass._drain(self: any, entry: any)
+	local held = entry.held
+	if held == nil then
+		return
+	end
+	while true do
+		local found = nil
+		for index, item in held do
+			if item.base == entry.version then
+				found = index
+				break
+			end
+		end
+		if found == nil then
+			break
+		end
+		local item = table.remove(held, found)
+		if not applyTo(entry, item.patch, item.version) then
+			entry.held = nil
+			self:_requestResync()
+			return
+		end
+	end
+	for index = #held, 1, -1 do
+		if held[index].version <= entry.version then
+			table.remove(held, index)
+		end
+	end
+	if #held == 0 then
+		entry.held = nil
+	end
+end
+
+--- Applies an update unless a newer version was already applied. With
+--- `base`, `value` is a patch from version `base` to `version`.
+function MirrorClass.Apply(self: any, name: any, value: any, version: any, _removed: any?, base: any?)
 	if type(name) ~= "string" or type(version) ~= "number" then
 		return
 	end
@@ -389,8 +591,34 @@ function MirrorClass.Apply(self: any, name: any, value: any, version: any)
 	if version <= entry.version then
 		return
 	end
-	entry.version = version
-	entry.value:Set(value)
+	if base == nil then
+		entry.version = version
+		entry.value:Set(value)
+	elseif type(base) ~= "number" then
+		return
+	elseif base == entry.version then
+		if not applyTo(entry, value, version) then
+			self:_requestResync()
+			return
+		end
+	elseif base > entry.version then
+		-- Arrived before the value it builds on (for example before the
+		-- initial snapshot). Keep it until that value arrives.
+		local held = entry.held or {}
+		entry.held = held
+		if #held >= MAX_HELD_PATCHES then
+			entry.held = nil
+			self:_requestResync()
+			return
+		end
+		table.insert(held, { patch = value, version = version, base = base })
+		return
+	else
+		-- Builds on a value this client never had.
+		self:_requestResync()
+		return
+	end
+	self:_drain(entry)
 end
 
 function MirrorClass.Get(self: any, name: string): any
@@ -423,6 +651,7 @@ function ClientClass.Observe(self: any, name: string, callback: (any) -> ()): an
 end
 
 function ClientClass.Destroy(self: any)
+	self._mirror._onResync = nil
 	self._net:Destroy()
 	self._mirror:Destroy()
 end
@@ -436,22 +665,45 @@ function Client.new(namespace: string, options: ClientOptions?): ReplicationClie
 	local self = setmetatable({ _net = net, _mirror = mirror }, ClientClass)
 
 	-- Listen before fetching so updates sent during the fetch are kept.
-	net:Event("Update"):Connect(function(name, value, version)
-		mirror:Apply(name, value, version)
+	net:Event("Update"):Connect(function(name, value, version, removed, base)
+		mirror:Apply(name, value, version, removed, base)
 	end)
 
 	local timeout = if options and options.Timeout then options.Timeout else 10
-	local ok, snapshot = net:Function("Fetch", { Timeout = timeout }):Invoke()
-	if not ok then
-		error(PREFIX .. ("Initial sync for '%s' failed: %s"):format(namespace, tostring(snapshot)), 2)
-	end
-	if type(snapshot) == "table" then
-		for name, entry in snapshot do
-			if type(entry) == "table" then
-				mirror:Apply(name, entry[1], entry[2])
+	local fetch = net:Function("Fetch", { Timeout = timeout })
+	local function applySnapshot(snapshot: any)
+		if type(snapshot) == "table" then
+			for name, entry in snapshot do
+				if type(entry) == "table" then
+					mirror:Apply(name, entry[1], entry[2])
+				end
 			end
 		end
 	end
+
+	-- A delta patch that can't be applied triggers one snapshot fetch at a
+	-- time. (The server rate-limits fetches; if one is refused, the next
+	-- patch that can't be applied tries again.)
+	local resyncing = false
+	mirror._onResync = function()
+		if resyncing then
+			return
+		end
+		resyncing = true
+		task.spawn(function()
+			local fetched, latest = fetch:Invoke()
+			resyncing = false
+			if fetched then
+				applySnapshot(latest)
+			end
+		end)
+	end
+
+	local ok, snapshot = fetch:Invoke()
+	if not ok then
+		error(PREFIX .. ("Initial sync for '%s' failed: %s"):format(namespace, tostring(snapshot)), 2)
+	end
+	applySnapshot(snapshot)
 	return (self :: any) :: ReplicationClient
 end
 
@@ -459,4 +711,6 @@ return table.freeze({
 	Server = table.freeze(Server),
 	Client = table.freeze(Client),
 	_newMirror = newMirror,
+	_diff = diff,
+	_applyPatch = applyPatch,
 })
