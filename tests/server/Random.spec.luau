@@ -19,6 +19,28 @@ return function(t, Constella)
 	end
 
 	t.describe("choose", function()
+		t.it("picks exactly what lootTable:Roll and chooseIndex pick for the same roll", function()
+			-- choose and chooseIndex scan running sums; lootTable binary-searches
+			-- precomputed ones. Zero weights, ties and fractional weights must
+			-- not change which entry a roll lands on.
+			local weights = { 0, 0.1, 3, 0, 0, 2.5, 1e-9, 40, 0, 7, 0.3, 0 }
+			local entries = {}
+			for index, weight in weights do
+				entries[index] = { Value = index, Weight = weight }
+			end
+			local loot = R.lootTable(entries)
+			local rolls = { 0, 0.5, 0.999999999999 }
+			local rng = Random.new(2024)
+			for _ = 1, 3000 do
+				table.insert(rolls, rng:NextNumber())
+			end
+			for _, roll in rolls do
+				local expected = loot:Roll(fixed(roll))
+				expect(R.choose(entries, fixed(roll))).toBe(expected)
+				expect(R.chooseIndex(weights, fixed(roll))).toBe(expected)
+			end
+		end)
+
 		t.it("maps the roll onto cumulative weight ranges", function()
 			expect(R.choose(RARITIES, fixed(0))).toBe("Common")
 			expect(R.choose(RARITIES, fixed(0.7499))).toBe("Common")

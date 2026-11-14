@@ -1,6 +1,6 @@
 # Constella documentation
 
-Reference pages for every module in Constella v0.2.0.
+Reference pages for every module in Constella v0.3.0.
 
 ## Architecture
 

@@ -19,3 +19,6 @@ ci.generated.project.json
 
 # pesde dry-run output
 package.tar.gz
+
+# Python
+__pycache__/

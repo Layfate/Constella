@@ -275,6 +275,34 @@ return function(t, Constella)
 			expect(resumed).toBe(true)
 		end)
 
+		t.it("skips AwaitStart callers that were cancelled and resumes the others", function()
+			local app = newApp()
+			app:Add({
+				Name = "Slow",
+				WaitForStart = true,
+				Start = function()
+					task.wait()
+				end,
+			})
+			local cancelled = task.spawn(function()
+				app:AwaitStart()
+			end)
+			local resumed = false
+			task.spawn(function()
+				app:AwaitStart()
+				resumed = true
+			end)
+			task.cancel(cancelled)
+			local startOk, startError = pcall(function()
+				app:Start()
+			end)
+			expect(startOk).toBe(true)
+			expect(startError).toBeNil()
+			expect(app:GetState()).toBe("Running")
+			expect(resumed).toBe(true)
+			app:Stop()
+		end)
+
 		t.it("AwaitStart raises after a failed startup", function()
 			local app = newApp()
 			app:Add({ Name = "A", Dependencies = { "Missing" } })

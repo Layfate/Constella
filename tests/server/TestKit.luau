@@ -162,6 +162,21 @@ function TestKit.run(specs: { Spec }, Constella: any, options: { Silent: boolean
 
 		t.expect = expect
 
+		--- True once the garbage collector has freed every key of the weak
+		--- table `weak`. Roblox cannot force a collection, so this allocates
+		--- throwaway tables to keep the incremental collector running, until
+		--- `timeout` seconds (default 10) have passed.
+		function t.collected(weak: { [any]: any }, timeout: number?): boolean
+			local deadline = os.clock() + (timeout or 10)
+			while next(weak) ~= nil and os.clock() < deadline do
+				for _ = 1, 20000 do
+					local _ = { 1, 2, 3 }
+				end
+				task.wait()
+			end
+			return next(weak) == nil
+		end
+
 		--- Records a test as skipped (for example when an optional
 		--- dependency is not installed) instead of running it.
 		function t.skip(name: string, reason: string)

@@ -102,6 +102,44 @@ return function(t, Constella)
 			expect(total:Get()).toBe(15)
 		end)
 
+		t.it("passes every source value, for any number of sources", function()
+			for count = 1, 5 do
+				local sources = {}
+				for index = 1, count do
+					sources[index] = State.new(index)
+				end
+				local total = State.computed(sources, function(...)
+					local sum = 0
+					for index = 1, select("#", ...) do
+						sum += select(index, ...) or 0
+					end
+					return sum
+				end)
+				expect(total:Get()).toBe(count * (count + 1) / 2)
+				sources[count]:Set(nil)
+				expect(total:Get()).toBe(count * (count - 1) / 2)
+				total:Destroy()
+			end
+		end)
+
+		t.it("reports nil old and new values", function()
+			local state = State.new(nil)
+			local other = State.new(1)
+			local seen = {}
+			state:Subscribe(function(new, old)
+				table.insert(seen, { new = new, old = old })
+			end)
+			other:Subscribe(function(new, old)
+				table.insert(seen, { new = new, old = old })
+			end)
+			State.batch(function()
+				state:Set(1)
+				other:Set(nil)
+			end)
+			state:Set(nil)
+			expect(seen).toEqual({ { new = 1 }, { old = 1 }, { old = 1 } })
+		end)
+
 		t.it("is read-only", function()
 			local source = State.new(1)
 			local derived = State.select(source, function(value)

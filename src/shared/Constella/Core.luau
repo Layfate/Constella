@@ -291,11 +291,19 @@ local function teardown(app: any, definitions: { any }): { string }
 	return errors
 end
 
+-- Resumes a waiting thread unless it was cancelled while it waited (then it
+-- is dead, and resuming it would raise).
+local function resume(thread: thread, ...: any)
+	if coroutine.status(thread) == "suspended" then
+		task.spawn(thread, ...)
+	end
+end
+
 local function resumeWaiters(app: any, ok: boolean, message: string?)
 	local waiting = app._waiting
 	app._waiting = {}
 	for _, thread in waiting do
-		task.spawn(thread, ok, message)
+		resume(thread, ok, message)
 	end
 end
 
@@ -444,7 +452,7 @@ function AppClass.Start(self: any)
 				settled = true
 				failure = err
 				if waiter then
-					task.spawn(waiter)
+					resume(waiter)
 				end
 				return true
 			end

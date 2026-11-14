@@ -60,7 +60,9 @@ end
 --
 -- Fire only visits ids that existed when it started, which gives snapshot
 -- semantics without copying the list. A disconnected node keeps its next
--- pointer, so a Fire that is walking past it carries on.
+-- pointer, so a Fire that is walking past it carries on. Its callback,
+-- signal and previous pointer are cleared, so a Connection that is kept
+-- after Disconnect doesn't keep the listener or the signal alive.
 local CALLBACK, SIGNAL, PREVIOUS, NEXT, ID = 1, 2, 3, 4, 5
 
 -- Listeners run on recycled "runner" threads instead of a new coroutine
@@ -125,6 +127,9 @@ function ConnectionClass.Disconnect(self: any)
 		signal._tail = previous or nil
 	end
 	signal._count -= 1
+	self[CALLBACK] = false
+	self[SIGNAL] = false
+	self[PREVIOUS] = false
 end
 ConnectionClass.Destroy = ConnectionClass.Disconnect
 
@@ -195,7 +200,10 @@ end
 function SignalClass.Wait(self: any): ...any
 	local thread = coroutine.running()
 	append(self, function(...)
-		task.spawn(thread, ...)
+		-- Skip a waiting thread that was cancelled in the meantime.
+		if coroutine.status(thread) == "suspended" then
+			task.spawn(thread, ...)
+		end
 	end, true, "Wait on")
 	return coroutine.yield()
 end
@@ -221,11 +229,13 @@ function SignalClass.Fire(self: any, ...: any)
 				break
 			end
 			if node.Connected then
+				-- Read before Disconnect, which clears the callback slot.
+				local callback = node[CALLBACK]
 				node:Disconnect()
 				if freeRunner == nil then
 					freeRunner = newRunner()
 				end
-				task.spawn(freeRunner :: thread, onError, node[CALLBACK], ...)
+				task.spawn(freeRunner :: thread, onError, callback, ...)
 			end
 		else
 			if id > lastId then
@@ -246,6 +256,9 @@ function SignalClass.DisconnectAll(self: any)
 	local node = self._head
 	while node do
 		node.Connected = false
+		node[CALLBACK] = false
+		node[SIGNAL] = false
+		node[PREVIOUS] = false
 		node = node[NEXT]
 	end
 	self._head = nil

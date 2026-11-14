@@ -29,7 +29,7 @@
 ```toml
 # wally.toml
 [dependencies]
-Constella = "zense/constella@0.2.0"
+Constella = "zense/constella@0.3.0"
 ```
 
 Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
@@ -186,7 +186,7 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 
 ```toml
 [dependencies]
-Constella = "zense/constella@0.2.0"
+Constella = "zense/constella@0.3.0"
 ```
 
 **pesde.**

@@ -393,13 +393,17 @@ function StoreClass.LoadAsync(self: any, player: Player): any
 		end)
 
 	self._loading[player] = promise
+	-- Once the load has settled, nothing reads the cancel flag again; clearing
+	-- it means a player who left mid-load isn't referenced forever.
 	promise:Then(function(profile)
 		self._loading[player] = nil
+		self._cancelled[player] = nil
 		self._stats.LoadsSucceeded += 1
 		self:_log("Profile loaded", { Key = key })
 		self.Loaded:Fire(player, profile)
 	end, function(problem)
 		self._loading[player] = nil
+		self._cancelled[player] = nil
 		local kind = if type(problem) == "table" then problem.Kind else nil
 		if kind == "PlayerLeft" or kind == "ShuttingDown" or kind == "Released" then
 			return

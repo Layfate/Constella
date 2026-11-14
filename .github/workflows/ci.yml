@@ -103,6 +103,11 @@ jobs:
       # downloaded for the test place and never committed.
       PROFILESTORE_COMMIT: 9580f7c59cd3c04808e43c92e24b9afaefba679b
       PROFILESTORE_SHA256: ad43737203688b8e88cab34ebe8c483000c157e53bfb41e35f1b49ee89d0c95f
+      # Comparison libraries for the benchmarks (sleitnick/signal 2.0.3 and
+      # sleitnick/trove 1.8.0), pinned the same way.
+      RBXUTIL_COMMIT: 31f9120fca021e3dec275b42bc7047d626962082
+      SIGNAL_SHA256: a2c3a044ad291f1b8ea7d9ab38147d0ca8807c22532a45f31f33c79b89b74124
+      TROVE_SHA256: 6037d12780509f4d7b6119c437b29918f230c2b90344247d591c58179ecef4b1
     steps:
       - name: Check for the Open Cloud key
         id: key
@@ -117,6 +122,9 @@ jobs:
 
       - uses: actions/checkout@v7
         if: steps.key.outputs.available == 'true'
+        with:
+          # The benchmarks build the pull request's base commit too.
+          fetch-depth: 0
 
       - name: Install Rojo (pinned)
         if: steps.key.outputs.available == 'true'
@@ -146,3 +154,39 @@ jobs:
       - name: Run the test suite on Roblox (Open Cloud)
         if: steps.key.outputs.available == 'true'
         run: python3 .github/scripts/roblox_tests.py build/ci.rbxl
+
+      # Pull requests only: this build against the base commit, measured in
+      # the same server session. Informational, so it never fails the run.
+      - name: Build the benchmark place (this build and the base commit)
+        if: steps.key.outputs.available == 'true' && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git worktree add --detach build/baseline "$BASE_SHA"
+          mkdir -p build/libs
+          for lib in signal trove; do
+            gh api "repos/Sleitnick/RbxUtil/contents/modules/$lib/init.luau?ref=$RBXUTIL_COMMIT" \
+              -H "Accept: application/vnd.github.raw" > "build/libs/$lib.luau"
+          done
+          echo "$SIGNAL_SHA256  build/libs/signal.luau" | sha256sum --check
+          echo "$TROVE_SHA256  build/libs/trove.luau" | sha256sum --check
+          python3 - <<'EOF'
+          import json
+          project = json.load(open("ci.project.json", encoding="utf-8"))
+          tree = project["tree"]
+          tree["ReplicatedStorage"]["Packages"]["ConstellaBaseline"] = {"$path": "build/baseline/src/shared/Constella"}
+          tree["ServerStorage"]["ConstellaBenchmarks"] = {"$path": "benchmarks"}
+          tree["ServerStorage"]["BenchmarkLibs"] = {
+              "$className": "Folder",
+              "Signal": {"$path": "build/libs/signal.luau"},
+              "Trove": {"$path": "build/libs/trove.luau"},
+          }
+          json.dump(project, open("ci.generated.project.json", "w", encoding="utf-8"), indent="\t")
+          EOF
+          rojo build ci.generated.project.json -o build/bench.rbxl
+
+      - name: Run the benchmarks on Roblox (Open Cloud)
+        if: steps.key.outputs.available == 'true' && github.event_name == 'pull_request'
+        continue-on-error: true
+        run: python3 .github/scripts/roblox_bench.py build/bench.rbxl 5
