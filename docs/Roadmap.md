@@ -8,7 +8,7 @@ v0.1.0 was built and tested in three stages. Each stage had to pass its tests in
 | --- | --- | --- |
 | 1. Foundation | Core/App, Signal, Cleanup, State, Random | Unit tests, demo place, examples |
 | 2. Secure infrastructure | Network, Component, Pool, Zone, Debug | Unit tests, plus a Play-mode test with a hostile client against real remotes |
-| 3. Advanced, optional | Promise, Data (beta), Replication, State UI bindings | Data failure simulations (throttling, takeover by another server, migration failures, newer data, leaving mid-load, save failures, shutdown budget), plus a Play-mode Replication test |
+| 3. Advanced, optional | Promise, Data (beta in 0.1.0 and 0.2.0), Replication, State UI bindings | Data failure simulations (throttling, takeover by another server, migration failures, newer data, leaving mid-load, save failures, shutdown budget), plus a Play-mode Replication test |
 
 Scope notes:
 
@@ -30,7 +30,7 @@ This stage proved that what exists works well. No new modules were added.
 
 Still verification work. No new modules are planned.
 
-- **Data:** ✅ real DataStores pass on a Roblox server in every CI run. Still to do: players moving between live servers (disconnects, shutdowns, rejoining a second server, high player counts). Data stays beta until then.
+- **Data:** ✅ out of beta. Every CI run tests it on real DataStores on real Roblox servers: a player moving to a second server (two servers at once), many sessions at once, and the live DataStore tests. Studio Server & Clients with 5 players covered players leaving together and during shutdown. Still to observe: a live game under heavy load over time.
 - **Pool:** measure memory over long sessions.
 
 ## Toward 1.0
