@@ -256,8 +256,13 @@ function StoreClass._prepare(self: any, data: any): (any, DataError?)
 	return working
 end
 
+-- Ends a session (the adapter performs the final save, which may yield).
+-- While it runs, the session is listed in `_ending`, so Shutdown also waits
+-- for releases that started before it was called.
 local function endSession(self: any, session: any, key: string)
+	self._ending[session] = true
 	local ok, saved, reason = pcall(session.End, session)
+	self._ending[session] = nil
 	if not ok or saved == false then
 		self:_report(("Ending the session for %s failed: %s"):format(key, tostring(if ok then reason else saved)))
 	end
@@ -435,8 +440,10 @@ function StoreClass.BindPlayers(self: any)
 end
 
 --- Stops new loads and releases every profile, waiting at most
---- `budgetSeconds` (default 20) for sessions to end. Returns true if all
---- sessions ended within the budget. Call it from game:BindToClose.
+--- `budgetSeconds` (default 20) for sessions to end. Sessions that were
+--- already ending (for example a player who left just before the server
+--- closed) are waited for too. Returns true if every session ended within
+--- the budget. Call it from game:BindToClose.
 function StoreClass.Shutdown(self: any, budgetSeconds: number?): boolean
 	self._closing = true
 	for _, connection in self._connections do
@@ -451,16 +458,18 @@ function StoreClass.Shutdown(self: any, budgetSeconds: number?): boolean
 	for player in self._profiles do
 		table.insert(players, player)
 	end
-	local pending = #players
 	for _, player in players do
-		task.spawn(function()
-			self:Release(player)
-			pending -= 1
-		end)
+		task.spawn(self.Release, self, player)
 	end
+	-- Every session being released, by this call or earlier, is in _ending
+	-- until its final save has finished.
 	local deadline = os.clock() + (budgetSeconds or 20)
-	while pending > 0 and os.clock() < deadline do
+	while next(self._ending) ~= nil and os.clock() < deadline do
 		task.wait()
+	end
+	local pending = 0
+	for _ in self._ending do
+		pending += 1
 	end
 	if pending > 0 then
 		self:_report(("Shutdown budget exceeded with %d session(s) still ending"):format(pending))
@@ -566,6 +575,7 @@ function Store.new(config: Config): Store
 		_connections = {},
 		_bound = false,
 		_closing = false,
+		_ending = {},
 		_stats = { LoadsSucceeded = 0, LoadsFailed = 0, SessionsLost = 0 },
 	}, StoreClass)
 	return (self :: any) :: Store

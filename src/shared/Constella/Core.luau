@@ -33,6 +33,12 @@
 	3. Stop      - Stop runs in reverse dependency order, then each
 	               context's Cleanup is destroyed. Idempotent.
 
+	A Start that is still running when its definition stops (it yielded and
+	never returned, like a `while true do ... task.wait() end` loop) is
+	cancelled just before that definition's Stop, both on App:Stop and on
+	a failed startup. Threads that Start spawns itself are not tracked: add
+	them to context.Cleanup.
+
 	An app can only be started once.
 ]=]
 
@@ -260,6 +266,15 @@ local function teardown(app: any, definitions: { any }): { string }
 	for index = #definitions, 1, -1 do
 		local definition = definitions[index]
 		local context = app._contexts[definition.Name]
+		-- A Start that is still running (it yielded and never returned) must
+		-- not keep working while its definition stops.
+		local startThread = app._startThreads[definition.Name]
+		if startThread then
+			app._startThreads[definition.Name] = nil
+			if coroutine.status(startThread) == "suspended" then
+				pcall(task.cancel, startThread)
+			end
+		end
 		if definition.Stop then
 			local ok, err = xpcall(definition.Stop, traceback, definition, context)
 			if not ok then
@@ -440,6 +455,7 @@ function AppClass.Start(self: any)
 					self._onError(PREFIX .. ("Start for '%s' failed after yielding: %s"):format(definition.Name, err))
 				end
 			end)
+			self._startThreads[definition.Name] = startThread
 
 			if not settled then
 				if waits then
@@ -548,6 +564,7 @@ function App.new(options: AppOptions?): App
 		_contexts = {},
 		_order = {},
 		_initialized = {},
+		_startThreads = {},
 		_waiting = {},
 		_failure = nil,
 		_onError = opts.OnError or function(message: string)

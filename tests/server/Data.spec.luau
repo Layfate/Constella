@@ -301,6 +301,28 @@ return function(t, Constella)
 			expect(Store.isError(err, "ShuttingDown")).toBe(true)
 		end)
 
+		t.it("waits for a release that started before Shutdown", function()
+			-- A player leaves (Release starts its final save, which yields), then
+			-- the server closes. Shutdown must not return before that save.
+			local store, adapter = newStore({ Adapter = MemoryAdapter.new({ Latency = 0.1 }) })
+			local player = fakePlayer()
+			local _, profile = load(store, player)
+			profile:Set("Coins", 42)
+			task.spawn(store.Release, store, player)
+			expect(store:Shutdown(5)).toBe(true)
+			expect(adapter:Peek("Test", keyOf(player)).Coins).toBe(42)
+			expect(adapter:IsLocked("Test", keyOf(player))).toBe(false)
+		end)
+
+		t.it("counts a release that started before Shutdown against the budget", function()
+			local store, _, errors = newStore({ Adapter = MemoryAdapter.new({ Latency = 0.3 }) })
+			local player = fakePlayer()
+			load(store, player)
+			task.spawn(store.Release, store, player)
+			expect(store:Shutdown(0.05)).toBe(false)
+			expect(#errors).toBe(1)
+		end)
+
 		t.it("reports when the budget is exceeded", function()
 			local store, _, errors = newStore({ Adapter = MemoryAdapter.new({ Latency = 0.3 }) })
 			load(store, fakePlayer())
