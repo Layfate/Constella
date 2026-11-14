@@ -7,7 +7,7 @@ labels: bug
 <!-- Security problem? Don't open an issue: see SECURITY.md. -->
 
 **Module and version**
-<!-- e.g. Network, Constella.Version = 0.2.0 -->
+<!-- e.g. Network, Constella.Version = 0.3.0 -->
 
 **What happened**
 

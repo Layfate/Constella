@@ -47,6 +47,13 @@ export type Options = {
 
 local DEFAULT_SAVE_TIMEOUT = 30
 
+-- Resumes the waiting caller unless it was cancelled while it waited.
+local function resume(thread: thread)
+	if coroutine.status(thread) == "suspended" then
+		task.spawn(thread)
+	end
+end
+
 -- Runs `trigger` (which starts a ProfileStore save) and waits until that
 -- save has been written. ProfileStore fires OnSave synchronously when a
 -- save starts and OnAfterSave after it is written, so the first
@@ -64,7 +71,7 @@ local function saveAndWait(profile: any, trigger: () -> (), timeout: number): (b
 		if started and not written and not timedOut then
 			written = true
 			if waiter then
-				task.spawn(waiter)
+				resume(waiter)
 			end
 		end
 	end)
@@ -88,7 +95,7 @@ local function saveAndWait(profile: any, trigger: () -> (), timeout: number): (b
 		local timer = task.delay(timeout, function()
 			if not written then
 				timedOut = true
-				task.spawn(waiter :: thread)
+				resume(waiter :: thread)
 			end
 		end)
 		coroutine.yield()

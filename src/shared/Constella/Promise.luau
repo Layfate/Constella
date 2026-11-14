@@ -119,13 +119,17 @@ local function isPromise(value: any): boolean
 	return type(value) == "table" and getmetatable(value) == PromiseClass
 end
 
+-- Bookkeeping lists (_queue, _cancelHooks, _upstream) are created on first
+-- use, since most promises never need some of them, and dropped when the
+-- promise settles. So a settled promise doesn't keep the promises it was
+-- chained from, or its cancel hooks, alive.
 local function create(): any
 	return setmetatable({
 		_status = "Pending",
 		_values = nil,
-		_queue = {},
-		_cancelHooks = {},
-		_upstream = {},
+		_queue = nil,
+		_cancelHooks = nil,
+		_upstream = nil,
 		_consumers = 0,
 		_handled = false,
 	}, PromiseClass)
@@ -133,9 +137,23 @@ end
 
 local function subscribe(promise: any, callback: () -> ())
 	if promise._status == "Pending" then
-		table.insert(promise._queue, callback)
+		local queue = promise._queue
+		if queue then
+			table.insert(queue, callback)
+		else
+			promise._queue = { callback }
+		end
 	else
 		callback()
+	end
+end
+
+-- Resumes a thread that is waiting on a promise. A waiting thread that was
+-- cancelled in the meantime (task.cancel, for example by a Cleanup) is dead
+-- and is skipped: resuming it would raise and stop the other callbacks.
+local function resumeWaiter(thread: thread)
+	if coroutine.status(thread) == "suspended" then
+		task.spawn(thread)
 	end
 end
 
@@ -145,10 +163,16 @@ local function settle(self: any, status: Status, values: any)
 	end
 	self._status = status
 	self._values = values
+	-- Cancel does nothing once settled, so the cancel hooks and upstream
+	-- links are never used again.
 	local queue = self._queue
-	self._queue = {}
-	for _, callback in queue do
-		callback()
+	self._queue = nil
+	self._cancelHooks = nil
+	self._upstream = nil
+	if queue then
+		for _, callback in queue do
+			callback()
+		end
 	end
 	if status == "Rejected" then
 		task.defer(function()
@@ -162,7 +186,12 @@ end
 local function addUpstream(self: any, upstream: any)
 	upstream._consumers += 1
 	upstream._handled = true
-	table.insert(self._upstream, upstream)
+	local list = self._upstream
+	if list then
+		table.insert(list, upstream)
+	else
+		self._upstream = { upstream }
+	end
 end
 
 local function resolveWith(self: any, ...: any)
@@ -270,8 +299,8 @@ function PromiseClass.Await(self: any): (boolean, ...any)
 	self._handled = true
 	if self._status == "Pending" then
 		local thread = coroutine.running()
-		table.insert(self._queue, function()
-			task.spawn(thread)
+		subscribe(self, function()
+			resumeWaiter(thread)
 		end)
 		coroutine.yield()
 	end
@@ -298,21 +327,29 @@ function PromiseClass.Cancel(self: any)
 	end
 	self._status = "Cancelled"
 	self._values = table.pack(newError("Cancelled", "The promise was cancelled"))
-	for _, hook in self._cancelHooks do
-		local ok, err = pcall(hook)
-		if not ok then
-			task.spawn(error, PREFIX .. "onCancel hook failed: " .. tostring(err), 0)
+	local hooks, queue, upstreams = self._cancelHooks, self._queue, self._upstream
+	self._cancelHooks = nil
+	self._queue = nil
+	self._upstream = nil
+	if hooks then
+		for _, hook in hooks do
+			local ok, err = pcall(hook)
+			if not ok then
+				task.spawn(error, PREFIX .. "onCancel hook failed: " .. tostring(err), 0)
+			end
 		end
 	end
-	local queue = self._queue
-	self._queue = {}
-	for _, callback in queue do
-		callback()
+	if queue then
+		for _, callback in queue do
+			callback()
+		end
 	end
-	for _, upstream in self._upstream do
-		upstream._consumers -= 1
-		if upstream._consumers <= 0 then
-			upstream:Cancel()
+	if upstreams then
+		for _, upstream in upstreams do
+			upstream._consumers -= 1
+			if upstream._consumers <= 0 then
+				upstream:Cancel()
+			end
 		end
 	end
 end
@@ -348,11 +385,21 @@ function Promise.new(executor: (
 		if type(hook) ~= "function" then
 			error(PREFIX .. "onCancel expects a function", 2)
 		end
-		if self._status == "Cancelled" then
+		local status = self._status
+		if status == "Cancelled" then
 			hook()
 			return true
 		end
-		table.insert(self._cancelHooks, hook)
+		if status ~= "Pending" then
+			-- Settled: the hook can never run, so don't keep it.
+			return false
+		end
+		local hooks = self._cancelHooks
+		if hooks then
+			table.insert(hooks, hook)
+		else
+			self._cancelHooks = { hook }
+		end
 		return false
 	end
 	task.spawn(function()

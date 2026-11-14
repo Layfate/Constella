@@ -176,19 +176,23 @@ return function(t, Constella)
 		expect(Signal.is({})).toBe(false)
 	end)
 
-	-- True once the garbage collector has freed every object in `weak`.
-	-- Roblox cannot force a collection, so this allocates throwaway tables
-	-- to keep the incremental collector running, with a time limit.
-	local function collected(weak, timeout)
-		local deadline = os.clock() + (timeout or 10)
-		while next(weak) ~= nil and os.clock() < deadline do
-			for _ = 1, 20000 do
-				local _ = { 1, 2, 3 }
-			end
-			task.wait()
-		end
-		return next(weak) == nil
-	end
+	t.it("Wait skips a waiting thread that was cancelled", function()
+		local errors = {}
+		local signal = Signal.new({
+			OnError = function(message)
+				table.insert(errors, message)
+			end,
+		})
+		local waiter = task.spawn(function()
+			signal:Wait()
+		end)
+		task.cancel(waiter)
+		signal:Fire(1)
+		expect(#errors).toBe(0)
+		expect(signal:GetConnectionCount()).toBe(0)
+	end)
+
+	local collected = t.collected
 
 	-- Runs `fn` (which must not yield) on a thread that then finishes, and
 	-- afterwards runs one more listener on the idle runner thread.
@@ -227,6 +231,51 @@ return function(t, Constella)
 			end)
 			expect(collected(weak)).toBe(true)
 			expect(signal:GetConnectionCount()).toBe(0)
+		end)
+
+		t.it("a Connection kept after Disconnect does not keep its listener alive", function()
+			local signal = Signal.new()
+			local weak = setmetatable({}, { __mode = "k" })
+			local kept
+			isolated(function()
+				signal:Connect(function() end)
+				-- Captures a fresh table: Luau reuses closures that capture
+				-- nothing, and those are never collected.
+				local token = {}
+				local listener = function()
+					return token
+				end
+				weak[listener] = true
+				kept = signal:Connect(listener)
+				signal:Connect(function() end)
+				signal:Fire()
+				kept:Disconnect()
+			end)
+			expect(collected(weak)).toBe(true)
+			expect(kept.Connected).toBe(false)
+			expect(signal:GetConnectionCount()).toBe(2)
+		end)
+
+		t.it("a Connection kept after DisconnectAll or Destroy does not keep the signal alive", function()
+			for _, method in { "DisconnectAll", "Destroy" } do
+				local weak = setmetatable({}, { __mode = "k" })
+				local kept = {}
+				isolated(function()
+					local signal = Signal.new()
+					weak[signal] = true
+					for index = 1, 3 do
+						local listener = function()
+							return index
+						end
+						weak[listener] = true
+						table.insert(kept, signal:Connect(listener))
+					end
+					signal:Fire()
+					signal[method](signal)
+				end)
+				expect(collected(weak)).toBe(true)
+				expect(kept[1].Connected).toBe(false)
+			end
 		end)
 
 		t.it("does not pin the arguments a new runner thread started with", function()

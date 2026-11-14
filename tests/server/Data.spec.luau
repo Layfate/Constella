@@ -126,6 +126,25 @@ return function(t, Constella)
 			expect(store:Get(player)).toBeNil()
 			expect(adapter:IsLocked("Test", keyOf(player))).toBe(false)
 		end)
+
+		t.it("does not keep a player who was released during loading", function()
+			local store = newStore({ Adapter = MemoryAdapter.new({ Latency = 0.05 }) })
+			local weak = setmetatable({}, { __mode = "k" })
+			local settled = false
+			-- On a thread that finishes, so no stack slot of this one holds the player.
+			task.spawn(function()
+				local player = fakePlayer()
+				weak[player] = true
+				local promise = store:LoadAsync(player)
+				store:Release(player)
+				player.Parent = nil
+				promise:Await()
+				settled = true
+			end)
+			expect(t.collected(weak)).toBe(true)
+			expect(settled).toBe(true)
+			expect(store:GetStats().Loading).toBe(0)
+		end)
 	end)
 
 	t.describe("migrations", function()

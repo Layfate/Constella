@@ -234,7 +234,9 @@ function ZoneClass.Step(self: any)
 	end
 	local kind, a, b = self._geometry()
 	local padding = self._exitPadding
-	local changes = {}
+	-- Created on the first change only: most steps change nothing.
+	local changes: { any }? = nil
+	-- A copy, because position callbacks are user code and may Track/Untrack.
 	local order: { any } = table.clone(self._order)
 	for _, entry in order do
 		local ok, position = pcall(entry.getPosition)
@@ -250,8 +252,15 @@ function ZoneClass.Step(self: any)
 		end
 		if inside ~= entry.inside then
 			entry.inside = inside
-			table.insert(changes, entry)
+			if changes then
+				table.insert(changes, entry)
+			else
+				changes = { entry }
+			end
 		end
+	end
+	if changes == nil then
+		return
 	end
 	for _, entry in changes do
 		-- Skip items untracked by an earlier handler in this same step.

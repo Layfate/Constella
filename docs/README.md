@@ -1,6 +1,6 @@
 # Constella documentation
 
-Reference pages for every module in Constella v0.2.0.
+Reference pages for every module in Constella v0.3.0.
 
 ## Architecture
 
@@ -47,4 +47,4 @@ Reference pages for every module in Constella v0.2.0.
 - **Zone checks points, not volumes.** Each zone has its own Heartbeat connection.
 - **Multi-player scenarios** (rejoins, many clients) are tested with stand-in players in unit tests, not with real clients.
 - **The Promise unhandled-rejection reporter applies to every promise** (`Promise.setUnhandledRejectionHandler`).
-- **Performance is measured, not assumed.** [Benchmarks](Benchmarks.md) cover Signal, Cleanup, Pool, Network, Random and State. Signal is slightly slower than sleitnick/signal; Cleanup is faster than Trove. No comparisons have been made with Knit, Fusion or other frameworks.
+- **Performance is measured, not assumed.** [Benchmarks](Benchmarks.md) cover Signal, Cleanup, Pool, Network, Random, State and Promise, and every pull request reruns them on a Roblox server. Signal's `Fire` matches sleitnick/signal with the same error catching, while `Connect`+`Disconnect` is slower; Cleanup is faster than Trove. No comparisons have been made with Knit, Fusion or other frameworks.

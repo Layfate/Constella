@@ -89,7 +89,14 @@ local function checkNumber(value: any, label: string, level: number)
 	end
 end
 
-local function validateEntries(entries: any, level: number): ({ any }, { number })
+-- True for a finite number >= 0 (NaN fails both comparisons). The common
+-- case is checked with this first, so error labels are only formatted
+-- when something is actually wrong.
+local function isWeight(value: any): boolean
+	return type(value) == "number" and value >= 0 and value < math.huge
+end
+
+local function checkEntryCount(entries: any, level: number): number
 	if type(entries) ~= "table" then
 		error(PREFIX .. ("entries must be an array, got %s"):format(typeof(entries)), level)
 	end
@@ -97,34 +104,49 @@ local function validateEntries(entries: any, level: number): ({ any }, { number 
 	if count == 0 then
 		error(PREFIX .. "entries must not be empty", level)
 	end
-	local values = table.create(count)
-	local weights = table.create(count)
-	local total = 0
-	for index = 1, count do
-		local entry = entries[index]
-		if type(entry) ~= "table" then
-			error(PREFIX .. ("entry #%d must be a table { Value = ..., Weight = number }"):format(index), level)
-		end
-		if entry.Value == nil then
-			error(
-				PREFIX
-					.. ('entry #%d has no Value (use a sentinel such as false or "Nothing" for empty drops)'):format(
-						index
-					),
-				level
-			)
-		end
-		checkNumber(entry.Weight, ("entry #%d Weight"):format(index), level + 1)
-		values[index] = entry.Value
-		weights[index] = entry.Weight
-		total += entry.Weight
+	return count
+end
+
+-- Raises the error for an entry that failed the quick check.
+local function rejectEntry(entry: any, index: number, level: number)
+	if type(entry) ~= "table" then
+		error(PREFIX .. ("entry #%d must be a table { Value = ..., Weight = number }"):format(index), level)
 	end
+	if entry.Value == nil then
+		error(
+			PREFIX
+				.. ('entry #%d has no Value (use a sentinel such as false or "Nothing" for empty drops)'):format(index),
+			level
+		)
+	end
+	checkNumber(entry.Weight, ("entry #%d Weight"):format(index), level + 1)
+end
+
+local function checkTotal(total: number, level: number)
 	if not (total > 0) then
 		error(PREFIX .. "at least one entry must have a positive weight", level)
 	end
 	if not isFinite(total) then
 		error(PREFIX .. "the sum of all weights must be finite", level)
 	end
+end
+
+local function validateEntries(entries: any, level: number): ({ any }, { number })
+	local count = checkEntryCount(entries, level + 1)
+	local values = table.create(count)
+	local weights = table.create(count)
+	local total = 0
+	for index = 1, count do
+		local entry = entries[index]
+		if type(entry) ~= "table" or entry.Value == nil or not isWeight(entry.Weight) then
+			rejectEntry(entry, index, level + 1)
+		end
+		local weight = entry.Weight
+		values[index] = entry.Value
+		weights[index] = weight
+		total += weight
+	end
+	checkTotal(total, level + 1)
 	return values, weights
 end
 
@@ -200,12 +222,16 @@ local function buildCumulative(weights: { number }): Cumulative
 	return { sums = sums, total = total, lastPositive = lastPositive }
 end
 
-local function pick(cumulative: Cumulative, rng: any): number
+local function nextRoll(rng: any): number
 	local roll = rng:NextNumber()
 	if type(roll) ~= "number" or not (roll >= 0 and roll < 1) then
 		error(PREFIX .. ("rng:NextNumber() must return a number in [0, 1), got %s"):format(tostring(roll)), 0)
 	end
-	local target = roll * cumulative.total
+	return roll
+end
+
+local function pick(cumulative: Cumulative, rng: any): number
+	local target = nextRoll(rng) * cumulative.total
 	local sums = cumulative.sums
 	-- Smallest index whose running sum is strictly greater than target.
 	-- Zero-weight entries share their predecessor's sum, so they are skipped.
@@ -297,10 +323,42 @@ local RandomLib = {}
 
 --- Picks one entry's Value according to its Weight.
 function RandomLib.choose<T>(entries: { Entry<T> }, rng: any?, modifiers: Modifiers?): T
-	local values, weights = validateEntries(entries, 3)
-	local source = resolveRng(rng, 3)
-	local cumulative = buildCumulative(applyModifiers(values, weights, modifiers, 3))
-	return values[pick(cumulative, source)]
+	if modifiers ~= nil then
+		local values, weights = validateEntries(entries, 3)
+		local source = resolveRng(rng, 3)
+		local cumulative = buildCumulative(applyModifiers(values, weights, modifiers, 3))
+		return values[pick(cumulative, source)]
+	end
+	-- Without modifiers: validate and total in one pass, then scan for the
+	-- first entry whose running sum exceeds the roll. The sums are added in
+	-- the same order as buildCumulative's, so this picks exactly the entry
+	-- the binary search in `pick` would, without allocating anything.
+	local count = checkEntryCount(entries, 3)
+	local total = 0
+	local lastPositive = 0
+	for index = 1, count do
+		local entry: any = entries[index]
+		if type(entry) ~= "table" or entry.Value == nil or not isWeight(entry.Weight) then
+			rejectEntry(entry, index, 3)
+		end
+		local weight = entry.Weight
+		total += weight
+		if weight > 0 then
+			lastPositive = index
+		end
+	end
+	checkTotal(total, 3)
+	local target = nextRoll(resolveRng(rng, 3)) * total
+	local running = 0
+	for index = 1, count do
+		local entry: any = entries[index]
+		running += entry.Weight
+		if running > target then
+			return entry.Value
+		end
+	end
+	-- Only reachable through floating point rounding at the very top.
+	return (entries[lastPositive] :: any).Value
 end
 
 --- Picks an index from a plain array of weights.
@@ -308,12 +366,33 @@ function RandomLib.chooseIndex(weights: { number }, rng: any?): number
 	if type(weights) ~= "table" then
 		error(PREFIX .. ("weights must be an array, got %s"):format(typeof(weights)), 2)
 	end
-	local entries = table.create(#weights)
-	for index, weight in weights do
-		entries[index] = { Value = index, Weight = weight }
+	local count = #weights
+	if count == 0 then
+		error(PREFIX .. "entries must not be empty", 2)
 	end
-	local values, validated = validateEntries(entries, 3)
-	return values[pick(buildCumulative(validated), resolveRng(rng, 3))]
+	-- Same single-pass validation and scan as `choose`.
+	local total = 0
+	local lastPositive = 0
+	for index = 1, count do
+		local weight: any = weights[index]
+		if not isWeight(weight) then
+			checkNumber(weight, ("entry #%d Weight"):format(index), 3)
+		end
+		total += weight
+		if weight > 0 then
+			lastPositive = index
+		end
+	end
+	checkTotal(total, 3)
+	local target = nextRoll(resolveRng(rng, 3)) * total
+	local running = 0
+	for index = 1, count do
+		running += weights[index]
+		if running > target then
+			return index
+		end
+	end
+	return lastPositive
 end
 
 --- Returns true with the given probability (0..1).

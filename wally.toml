@@ -2,7 +2,7 @@
 # The scope must match the Wally account the package is published from.
 name = "zense/constella"
 description = "A modular Luau toolkit for Roblox by Zense: app lifecycle, signals, cleanup, reactive state, secure networking, components, pools, zones, promises, player data and replication."
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Zense"]
 license = "MIT"
 repository = "https://github.com/Layfate/Constella"

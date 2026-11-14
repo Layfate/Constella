@@ -47,10 +47,14 @@ local CALL = table.freeze({}) -- function: call it
 local CANCEL = table.freeze({}) -- thread: cancel it
 local KEYED = table.freeze({}) -- keyed record
 
+local function getMember(value: any, name: string): any
+	return value[name]
+end
+
+-- Indexing can raise (a missing Instance member, a strict __index), so it
+-- runs under pcall; `getMember` is shared so no closure is created per check.
 local function hasMethod(value: any, name: string): boolean
-	local ok, member = pcall(function()
-		return value[name]
-	end)
+	local ok, member = pcall(getMember, value, name)
 	return ok and type(member) == "function"
 end
 
