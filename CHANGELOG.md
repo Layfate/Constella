@@ -13,7 +13,12 @@ All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.
   - Existing annotations keep working: `Promise`, `Store` and `Profile` without type arguments mean the old untyped versions.
 - **Data is no longer beta.** Everything that can be checked before a live game has now been verified on real DataStores on real Roblox servers (see [docs/Data.md](docs/Data.md#status-and-verification)). The API is unchanged.
 
+### Fixed
+- **Packaging:** the Wally package would have contained the whole repository, including build output and a downloaded copy of ProfileStore, because Wally 0.3.2 ignores `include`. `wally.toml` now excludes everything but the library, and pesde no longer ships a hand-written `default.project.json` (pesde generates it on install).
+
 ### Added
+- **Packaging:** every push builds the Wally and pesde packages and checks that each contains exactly the library. Releases publish to both registries when their tokens are set, and fail if `init.luau`, `wally.toml` and `pesde.toml` disagree with the tag.
+- **Docs site:** https://layfate.github.io/Constella/ (GitHub Pages from `docs/`).
 - **CI:** two live Data scenarios run on real Roblox servers on every push ([`tests/server/Live.luau`](tests/server/Live.luau)). A player moves to a second server: server B sees server A's data, A gives up the session and kicks the player, and B's save is the one stored. And 15 sessions load and save at once on one server.
 - **Docs:** [Data](docs/Data.md) explains ProfileStore's MessagingService subscription limit for servers that keep many profiles open with few players.
 - **CI:** the whole test suite runs on a real Roblox server on every push, through Open Cloud: the CI place is built from `ci.project.json` with a pinned ProfileStore, published to a dedicated CI experience, and run with the Luau execution API. 242 tests pass there, including the live DataStore tests.
