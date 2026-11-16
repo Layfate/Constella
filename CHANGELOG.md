@@ -2,6 +2,13 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
+## 0.3.4 — 2026-11-16
+
+Documentation only: the code is identical to 0.3.3.
+
+### Fixed
+- **README:** the logo and every link (docs, examples, changelog, license) use full GitHub URLs. Relative paths didn't resolve where the packaged README is shown, such as on pesde, so the logo was broken and the links went nowhere.
+
 ## 0.3.3 — 2026-11-16
 
 Faster Replication sends through a faster payload check, plus package metadata and install docs. No behaviour or public API changed.
