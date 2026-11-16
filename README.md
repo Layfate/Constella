@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://github.com/Layfate/Constella/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Layfate/Constella/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7c6cf0"></a>
-  <a href="CHANGELOG.md"><img alt="Version 0.3.2" src="https://img.shields.io/badge/version-0.3.2-4fb4f0"></a>
+  <a href="CHANGELOG.md"><img alt="Version 0.3.3" src="https://img.shields.io/badge/version-0.3.3-4fb4f0"></a>
   <img alt="Luau: strict" src="https://img.shields.io/badge/luau-strict-5b7cfa">
   <img alt="Platform: Roblox" src="https://img.shields.io/badge/platform-Roblox-3b3f63">
 </p>
@@ -29,7 +29,7 @@
 ```toml
 # wally.toml
 [dependencies]
-Constella = "layfate/constella@0.3.2"
+Constella = "layfate/constella@0.3.3"
 ```
 
 Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
@@ -189,7 +189,14 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 
 ```toml
 [dependencies]
-Constella = "layfate/constella@0.3.2"
+Constella = "layfate/constella@0.3.3"
+```
+
+Autocomplete works through Wally's `Packages/Constella` link file as installed. To also use Constella's exported type names in your own annotations, re-export them into the link files with [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) after every `wally install`:
+
+```bash
+rojo sourcemap default.project.json --output sourcemap.json
+wally-package-types --sourcemap sourcemap.json Packages/
 ```
 
 **pesde.**

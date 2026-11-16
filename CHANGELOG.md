@@ -2,6 +2,20 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
+## 0.3.3 — 2026-11-16
+
+Faster Replication sends through a faster payload check, plus package metadata and install docs. No behaviour or public API changed.
+
+### Performance
+Measured A/B against 0.3.2 on a Roblox server (the CI benchmark on pull request #6: 7 runs, alternating order, 95% bootstrap confidence intervals), and in the local Luau runtime (Lune, 9–11 alternating rounds).
+- **Network.Payload:** the walk that checks size, depth and node limits handled every key and every plain value with a recursive call. Strings, numbers and booleans are now added inline, with the same limits checked in the same order, so sizes and rejection reasons are unchanged. A 20,000-case randomized comparison with 0.3.2 (every limit and every refusal) found no difference. On its own, in Lune, the walk is 33–45% faster.
+- **Replication:** publishing one change to a 40-item inventory on a Roblox server: full value **32% faster** (95% CI −40 to −27%), `Delta = true` **28% faster** (−33 to −27%).
+- **Network:** a whole request is unchanged within noise (−3%): measuring the payload is a small part of rate limiting, schema checks and authorization.
+
+### Changed
+- `wally.toml` sets `homepage` to the documentation site, so wally.run links to it.
+- The README explains how to keep Constella's exported type names when installing with Wally (`wally-package-types`).
+
 ## 0.3.2 — 2026-11-14
 
 Fixes for players who leave while a request, share or resync is in flight, `Changed` for in-place `Update` edits, and faster hot paths. No public API was removed or renamed.
