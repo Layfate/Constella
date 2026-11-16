@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-512.png">
-    <img src="assets/logo-512-panel.png" alt="Constella logo" width="160">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Layfate/Constella/main/assets/logo-512.png">
+    <img src="https://raw.githubusercontent.com/Layfate/Constella/main/assets/logo-512-panel.png" alt="Constella logo" width="160">
   </picture>
 </p>
 
@@ -14,22 +14,22 @@
 
 <p align="center">
   <a href="https://github.com/Layfate/Constella/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Layfate/Constella/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7c6cf0"></a>
-  <a href="CHANGELOG.md"><img alt="Version 0.3.3" src="https://img.shields.io/badge/version-0.3.3-4fb4f0"></a>
+  <a href="https://github.com/Layfate/Constella/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7c6cf0"></a>
+  <a href="https://github.com/Layfate/Constella/blob/main/CHANGELOG.md"><img alt="Version 0.3.4" src="https://img.shields.io/badge/version-0.3.4-4fb4f0"></a>
   <img alt="Luau: strict" src="https://img.shields.io/badge/luau-strict-5b7cfa">
   <img alt="Platform: Roblox" src="https://img.shields.io/badge/platform-Roblox-3b3f63">
 </p>
 
 <p align="center">Made by <b>Zense</b></p>
 
-📖 **[Documentation → docs/](docs/README.md)**<br>
-🧪 **[Examples → one script per module](examples/)**<br>
-🗺️ **[Roadmap](docs/Roadmap.md)**
+📖 **[Documentation → docs/](https://github.com/Layfate/Constella/blob/main/docs/README.md)**<br>
+🧪 **[Examples → one script per module](https://github.com/Layfate/Constella/tree/main/examples)**<br>
+🗺️ **[Roadmap](https://github.com/Layfate/Constella/blob/main/docs/Roadmap.md)**
 
 ```toml
 # wally.toml
 [dependencies]
-Constella = "layfate/constella@0.3.3"
+Constella = "layfate/constella@0.3.4"
 ```
 
 Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
@@ -38,28 +38,28 @@ Also available as a ready-to-insert model file (**[download `Constella.rbxm`](ht
 - **Safe networking by default.** Every client request passes rate limiting, payload caps, schema validation and your authorization check before your code runs. Clients only ever see generic error codes; the details stay on the server.
 - **An explicit architecture.** Apps start services in dependency order, catch duplicates, missing dependencies and cycles before any code runs, keep client and server code apart, and roll back cleanly if startup fails. No globals, no singletons, no auto-discovery.
 - **Player data that fails closed.** Migrations, template reconciliation and session-loss handling sit on top of ProfileStore's session locking. A failed load never overwrites saved data.
-- **Tested and measured.** Unit tests, Data failure simulations, tests against real ProfileStore, Play-mode integration tests with a hostile client against real remotes, and published [benchmarks](docs/Benchmarks.md) against other libraries and hand-written baselines, including where Constella is slower.
+- **Tested and measured.** Unit tests, Data failure simulations, tests against real ProfileStore, Play-mode integration tests with a hostile client against real remotes, and published [benchmarks](https://github.com/Layfate/Constella/blob/main/docs/Benchmarks.md) against other libraries and hand-written baselines, including where Constella is slower.
 
 > [!NOTE]
-> `Constella.Data` runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately. Every CI run tests it on real DataStores on real Roblox servers, including a player moving to a second server. See [Data](docs/Data.md) for exactly what's verified.
+> `Constella.Data` runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately. Every CI run tests it on real DataStores on real Roblox servers, including a player moving to a second server. See [Data](https://github.com/Layfate/Constella/blob/main/docs/Data.md) for exactly what's verified.
 
 ## Modules
 
 | | Module | What it does |
 | --- | --- | --- |
-| **Architecture** | [Core / App](docs/Core.md) | Services and controllers with dependency-ordered Init/Start/Stop and injection |
-| **Utilities** | [Signal](docs/Signal.md) | Custom events with deterministic dispatch and error isolation |
-| | [Cleanup](docs/Cleanup.md) | Owns connections, instances, threads and promises, and disposes them together |
-| | [State](docs/State.md) | Reactive values, computed state, batching and UI bindings |
-| | [Promise](docs/Promise.md) | Async chaining, cancellation, timeouts and retries |
-| | [Random](docs/Random.md) | Weighted rolls, loot tables and luck, with the math documented |
-| | [Debug](docs/Debug.md) | Structured logging and metrics, with almost no cost when switched off |
-| **Game systems** | [Network](docs/Network.md) | Server-owned remotes with validation, rate limits and payload caps |
-| | [Replication](docs/Replication.md) | Server→client State, only when the server explicitly shares it |
-| | [Component](docs/Component.md) | Behaviour attached to CollectionService tags |
-| | [Pool](docs/Pool.md) | Bounded object reuse for projectiles and effects |
-| | [Zone](docs/Zone.md) | Enter/exit detection for players and parts |
-| | [Data](docs/Data.md) | Player profiles on ProfileStore *(server only)* |
+| **Architecture** | [Core / App](https://github.com/Layfate/Constella/blob/main/docs/Core.md) | Services and controllers with dependency-ordered Init/Start/Stop and injection |
+| **Utilities** | [Signal](https://github.com/Layfate/Constella/blob/main/docs/Signal.md) | Custom events with deterministic dispatch and error isolation |
+| | [Cleanup](https://github.com/Layfate/Constella/blob/main/docs/Cleanup.md) | Owns connections, instances, threads and promises, and disposes them together |
+| | [State](https://github.com/Layfate/Constella/blob/main/docs/State.md) | Reactive values, computed state, batching and UI bindings |
+| | [Promise](https://github.com/Layfate/Constella/blob/main/docs/Promise.md) | Async chaining, cancellation, timeouts and retries |
+| | [Random](https://github.com/Layfate/Constella/blob/main/docs/Random.md) | Weighted rolls, loot tables and luck, with the math documented |
+| | [Debug](https://github.com/Layfate/Constella/blob/main/docs/Debug.md) | Structured logging and metrics, with almost no cost when switched off |
+| **Game systems** | [Network](https://github.com/Layfate/Constella/blob/main/docs/Network.md) | Server-owned remotes with validation, rate limits and payload caps |
+| | [Replication](https://github.com/Layfate/Constella/blob/main/docs/Replication.md) | Server→client State, only when the server explicitly shares it |
+| | [Component](https://github.com/Layfate/Constella/blob/main/docs/Component.md) | Behaviour attached to CollectionService tags |
+| | [Pool](https://github.com/Layfate/Constella/blob/main/docs/Pool.md) | Bounded object reuse for projectiles and effects |
+| | [Zone](https://github.com/Layfate/Constella/blob/main/docs/Zone.md) | Enter/exit detection for players and parts |
+| | [Data](https://github.com/Layfate/Constella/blob/main/docs/Data.md) | Player profiles on ProfileStore *(server only)* |
 
 ## Compared with other libraries
 
@@ -67,16 +67,16 @@ Each module has a well-known alternative. Constella's case is that all 13 share 
 
 | Job | Common choice | Constella | Main difference |
 | --- | --- | --- | --- |
-| **Secure remotes** | Plain RemoteEvents; Zap, ByteNet or Blink | [Network](docs/Network.md) | **Security first:** every client request is rate limited, size capped, schema checked and authorized before your handler runs, and clients only see generic error codes. Zap, ByteNet and Blink focus on compact serialization and bandwidth instead. The two approaches can be combined |
-| Player data | ProfileStore directly | [Data](docs/Data.md) | Built **on** ProfileStore: adds migrations, template reconciliation, `Changed` signals, kick-on-session-loss and a shutdown budget that waits for every save |
-| App structure | Knit | [Core](docs/Core.md) | Explicit apps instead of global singletons: dependency order, cycle and environment checks before any code runs, and rollback when startup fails |
-| Cleanup | Trove, Janitor, Maid | [Cleanup](docs/Cleanup.md) | Level with Janitor and about 6× faster than Trove for functions on a Roblox server, with half of Trove's memory ([benchmarks](docs/Benchmarks.md)) |
-| Signals | GoodSignal, sleitnick/signal | [Signal](docs/Signal.md) | Catches each listener's errors and calls listeners in order. With the same error catching, `Fire` is within 1–11% of sleitnick/signal (depending on the server) and faster than LemonSignal; `Connect`+`Disconnect` is slower; and it uses the least memory per connection of the three |
-| Promises | evaera/promise | [Promise](docs/Promise.md) | A smaller, strictly typed core: cancellation, timeouts, `all`/`race`/`allSettled`, retry with backoff. About 6× faster than evaera/promise for a `resolve`+`Then`+`Await` and a tenth of the memory per promise; evaera/promise has a larger API and a long track record |
-| Reactive state | Fusion | [State](docs/State.md) | Small reactive values with property bindings, not a UI framework. For building whole interfaces declaratively, Fusion does far more |
-| Zones | ZonePlus | [Zone](docs/Zone.md) | Simple point tests against boxes and spheres, with hysteresis at the edges, at about 0.3 µs per tracked item per step. ZonePlus supports more shapes and features |
-| Tagged components | sleitnick/component | [Component](docs/Component.md) | Each component gets its own Cleanup and an ancestor filter |
-| Object reuse | PartCache | [Pool](docs/Pool.md) | Pools any object, not only Parts, with limits on idle and active counts |
+| **Secure remotes** | Plain RemoteEvents; Zap, ByteNet or Blink | [Network](https://github.com/Layfate/Constella/blob/main/docs/Network.md) | **Security first:** every client request is rate limited, size capped, schema checked and authorized before your handler runs, and clients only see generic error codes. Zap, ByteNet and Blink focus on compact serialization and bandwidth instead. The two approaches can be combined |
+| Player data | ProfileStore directly | [Data](https://github.com/Layfate/Constella/blob/main/docs/Data.md) | Built **on** ProfileStore: adds migrations, template reconciliation, `Changed` signals, kick-on-session-loss and a shutdown budget that waits for every save |
+| App structure | Knit | [Core](https://github.com/Layfate/Constella/blob/main/docs/Core.md) | Explicit apps instead of global singletons: dependency order, cycle and environment checks before any code runs, and rollback when startup fails |
+| Cleanup | Trove, Janitor, Maid | [Cleanup](https://github.com/Layfate/Constella/blob/main/docs/Cleanup.md) | Level with Janitor and about 6× faster than Trove for functions on a Roblox server, with half of Trove's memory ([benchmarks](https://github.com/Layfate/Constella/blob/main/docs/Benchmarks.md)) |
+| Signals | GoodSignal, sleitnick/signal | [Signal](https://github.com/Layfate/Constella/blob/main/docs/Signal.md) | Catches each listener's errors and calls listeners in order. With the same error catching, `Fire` is within 1–11% of sleitnick/signal (depending on the server) and faster than LemonSignal; `Connect`+`Disconnect` is slower; and it uses the least memory per connection of the three |
+| Promises | evaera/promise | [Promise](https://github.com/Layfate/Constella/blob/main/docs/Promise.md) | A smaller, strictly typed core: cancellation, timeouts, `all`/`race`/`allSettled`, retry with backoff. About 6× faster than evaera/promise for a `resolve`+`Then`+`Await` and a tenth of the memory per promise; evaera/promise has a larger API and a long track record |
+| Reactive state | Fusion | [State](https://github.com/Layfate/Constella/blob/main/docs/State.md) | Small reactive values with property bindings, not a UI framework. For building whole interfaces declaratively, Fusion does far more |
+| Zones | ZonePlus | [Zone](https://github.com/Layfate/Constella/blob/main/docs/Zone.md) | Simple point tests against boxes and spheres, with hysteresis at the edges, at about 0.3 µs per tracked item per step. ZonePlus supports more shapes and features |
+| Tagged components | sleitnick/component | [Component](https://github.com/Layfate/Constella/blob/main/docs/Component.md) | Each component gets its own Cleanup and an ancestor filter |
+| Object reuse | PartCache | [Pool](https://github.com/Layfate/Constella/blob/main/docs/Pool.md) | Pools any object, not only Parts, with limits on idle and active counts |
 
 ## Quick start
 
@@ -176,7 +176,7 @@ local ok, bought = buy:Invoke("Sword") -- ok is false on a rejection, rate limit
 print("Bought a sword:", ok and bought)
 ```
 
-A complete demo game, with saved data, a coins UI and a shop, lives in [`src/server`](src/server) and [`src/client`](src/client). Each module also has a short example in [`examples/`](examples/).
+A complete demo game, with saved data, a coins UI and a shop, lives in [`src/server`](https://github.com/Layfate/Constella/tree/main/src/server) and [`src/client`](https://github.com/Layfate/Constella/tree/main/src/client). Each module also has a short example in [`examples/`](https://github.com/Layfate/Constella/tree/main/examples).
 
 ## Installation
 
@@ -189,7 +189,7 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 
 ```toml
 [dependencies]
-Constella = "layfate/constella@0.3.3"
+Constella = "layfate/constella@0.3.4"
 ```
 
 Autocomplete works through Wally's `Packages/Constella` link file as installed. To also use Constella's exported type names in your own annotations, re-export them into the link files with [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) after every `wally install`:
@@ -215,8 +215,8 @@ rojo build default.project.json -o Constella.rbxm
 <summary><b>Manual install (no tools)</b></summary>
 
 1. In Studio, create a Folder named `Packages` in `ReplicatedStorage`.
-2. Inside it, create a ModuleScript named `Constella` and paste in [`src/shared/Constella/init.luau`](src/shared/Constella/init.luau).
-3. For every other file in [`src/shared/Constella`](src/shared/Constella), add a child ModuleScript with the same name (without `.luau`).
+2. Inside it, create a ModuleScript named `Constella` and paste in [`src/shared/Constella/init.luau`](https://github.com/Layfate/Constella/blob/main/src/shared/Constella/init.luau).
+3. For every other file in [`src/shared/Constella`](https://github.com/Layfate/Constella/tree/main/src/shared/Constella), add a child ModuleScript with the same name (without `.luau`).
 4. `Network` and `Data` are folders: give each one a ModuleScript holding its `init.luau`, with the rest of its files as children.
 
 </details>
@@ -230,8 +230,8 @@ selene src tests examples benchmarks     # lint
 stylua src tests examples benchmarks     # format
 ```
 
-Press **Play** in the dev place to run the full test suite and both integration tests. On every push and pull request, GitHub Actions checks formatting (StyLua), lint (selene) and strict Roblox types (luau-lsp), then runs the whole test suite on a real Roblox server through Open Cloud, including the live DataStore tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for how tests are structured and what a pull request needs.
+Press **Play** in the dev place to run the full test suite and both integration tests. On every push and pull request, GitHub Actions checks formatting (StyLua), lint (selene) and strict Roblox types (luau-lsp), then runs the whole test suite on a real Roblox server through Open Cloud, including the live DataStore tests. See [CONTRIBUTING.md](https://github.com/Layfate/Constella/blob/main/CONTRIBUTING.md) for how tests are structured and what a pull request needs.
 
 ## License
 
-MIT © 2026 Zense. See [LICENSE](LICENSE).
+MIT © 2026 Zense. See [LICENSE](https://github.com/Layfate/Constella/blob/main/LICENSE).
