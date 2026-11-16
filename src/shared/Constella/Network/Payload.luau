@@ -39,6 +39,19 @@ local FIXED_SIZES: { [string]: number } = {
 
 local Payload = {}
 
+-- Most keys and values in a payload are strings, numbers or booleans. The
+-- table loops below add those inline instead of recursing, which saves a
+-- function call per key and per plain value. The inline paths count, size
+-- and check limits in exactly the order `visit` does (node count first,
+-- then bytes), so the totals and the reasons are the same either way.
+local function tooManyValues(maxNodes: number): string
+	return ("payload has more than %d values"):format(maxNodes)
+end
+
+local function tooManyBytes(maxBytes: number): string
+	return ("payload exceeds %d bytes"):format(maxBytes)
+end
+
 -- Adds `value` to the running totals. Returns the new (total, nodes), plus a
 -- reason once a limit is exceeded. The totals are passed along instead of
 -- captured, so measuring a request allocates nothing.
@@ -65,13 +78,37 @@ local function visit(
 		total += 4
 		local failure: string?
 		for key, item in value do
-			total, nodes, failure = visit(key, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
-			if failure then
-				return total, nodes, failure
+			local keyType = type(key)
+			if keyType == "string" or keyType == "number" then
+				nodes += 1
+				if nodes > maxNodes then
+					return total, nodes, tooManyValues(maxNodes)
+				end
+				total += if keyType == "string" then #key + 4 else 9
+				if total > maxBytes then
+					return total, nodes, tooManyBytes(maxBytes)
+				end
+			else
+				total, nodes, failure = visit(key, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
+				if failure then
+					return total, nodes, failure
+				end
 			end
-			total, nodes, failure = visit(item, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
-			if failure then
-				return total, nodes, failure
+			local itemType = type(item)
+			if itemType == "string" or itemType == "number" or itemType == "boolean" then
+				nodes += 1
+				if nodes > maxNodes then
+					return total, nodes, tooManyValues(maxNodes)
+				end
+				total += if itemType == "string" then #item + 4 elseif itemType == "number" then 9 else 1
+				if total > maxBytes then
+					return total, nodes, tooManyBytes(maxBytes)
+				end
+			else
+				total, nodes, failure = visit(item, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
+				if failure then
+					return total, nodes, failure
+				end
 			end
 		end
 	elseif valueType == "buffer" then
@@ -114,13 +151,37 @@ local function visitReplicable(
 		total += 4
 		local failure: string?
 		for key, item in value do
-			total, nodes, failure = visitReplicable(key, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
-			if failure then
-				return total, nodes, failure
+			local keyType = type(key)
+			if keyType == "string" or keyType == "number" then
+				nodes += 1
+				if nodes > maxNodes then
+					return total, nodes, tooManyValues(maxNodes)
+				end
+				total += if keyType == "string" then #key + 4 else 9
+				if total > maxBytes then
+					return total, nodes, tooManyBytes(maxBytes)
+				end
+			else
+				total, nodes, failure = visitReplicable(key, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
+				if failure then
+					return total, nodes, failure
+				end
 			end
-			total, nodes, failure = visitReplicable(item, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
-			if failure then
-				return total, nodes, failure
+			local itemType = type(item)
+			if itemType == "string" or itemType == "number" or itemType == "boolean" then
+				nodes += 1
+				if nodes > maxNodes then
+					return total, nodes, tooManyValues(maxNodes)
+				end
+				total += if itemType == "string" then #item + 4 elseif itemType == "number" then 9 else 1
+				if total > maxBytes then
+					return total, nodes, tooManyBytes(maxBytes)
+				end
+			else
+				total, nodes, failure = visitReplicable(item, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
+				if failure then
+					return total, nodes, failure
+				end
 			end
 		end
 	elseif valueType == "function" or valueType == "thread" or valueType == "userdata" then
@@ -167,11 +228,33 @@ local function copyReplicable(
 		local failure: string?
 		local itemCopy: any
 		for key, item in value do
-			total, nodes, failure = visitReplicable(key, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
-			if failure then
-				return nil, total, nodes, failure
+			local keyType = type(key)
+			if keyType == "string" or keyType == "number" then
+				nodes += 1
+				if nodes > maxNodes then
+					return nil, total, nodes, tooManyValues(maxNodes)
+				end
+				total += if keyType == "string" then #key + 4 else 9
+				if total > maxBytes then
+					return nil, total, nodes, tooManyBytes(maxBytes)
+				end
+			else
+				total, nodes, failure = visitReplicable(key, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
+				if failure then
+					return nil, total, nodes, failure
+				end
 			end
-			if type(item) == "table" then
+			local itemType = type(item)
+			if itemType == "string" or itemType == "number" or itemType == "boolean" then
+				nodes += 1
+				if nodes > maxNodes then
+					return nil, total, nodes, tooManyValues(maxNodes)
+				end
+				total += if itemType == "string" then #item + 4 elseif itemType == "number" then 9 else 1
+				if total > maxBytes then
+					return nil, total, nodes, tooManyBytes(maxBytes)
+				end
+			elseif itemType == "table" then
 				itemCopy, total, nodes, failure =
 					copyReplicable(item, depth + 1, total, nodes, maxBytes, maxDepth, maxNodes)
 				if failure then
