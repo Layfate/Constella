@@ -53,7 +53,7 @@ Still verification work. No new modules.
 
 ## v0.3.3 — faster payload checks · released 2026-11-16
 
-- **Network, Replication:** ✅ payload checks add plain keys and values inline: request checks 33% faster, full Replication sends 23% faster, Delta sends 8% faster, with identical sizes and rejection reasons.
+- **Replication:** ✅ payload checks add plain keys and values inline: full sends 32% faster and Delta sends 28% faster on a Roblox server, with identical sizes and rejection reasons.
 - **Packaging:** ✅ wally.run links to the documentation; the README covers exported types with Wally.
 
 ## Next

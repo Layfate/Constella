@@ -4,12 +4,13 @@ All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.
 
 ## 0.3.3 — 2026-11-16
 
-A faster payload check for Network requests and Replication sends, plus package metadata and install docs. No behaviour or public API changed.
+Faster Replication sends through a faster payload check, plus package metadata and install docs. No behaviour or public API changed.
 
 ### Performance
-Measured A/B against 0.3.2 in the local Luau runtime (Lune), 9–11 rounds with alternating order; medians shown. The CI benchmark reruns this on a Roblox server.
-- **Network.Payload:** the walk that checks size, depth and node limits handled every key and every plain value with a recursive call. Strings, numbers and booleans are now added inline, with the same limits checked in the same order, so sizes and rejection reasons are unchanged. A 20,000-case randomized comparison with 0.3.2 (every limit and every refusal) found no difference. Measuring a request's arguments: 33% faster. Measuring a 40-item inventory: 45% faster; copying it for a full Replication send: 42% faster.
-- **Replication:** publishing one change to a 40-item inventory, end to end: full value 23% faster (71.8 → 55.3 µs), `Delta = true` 8% faster (85.5 → 78.9 µs).
+Measured A/B against 0.3.2 on a Roblox server (the CI benchmark on pull request #6: 7 runs, alternating order, 95% bootstrap confidence intervals), and in the local Luau runtime (Lune, 9–11 alternating rounds).
+- **Network.Payload:** the walk that checks size, depth and node limits handled every key and every plain value with a recursive call. Strings, numbers and booleans are now added inline, with the same limits checked in the same order, so sizes and rejection reasons are unchanged. A 20,000-case randomized comparison with 0.3.2 (every limit and every refusal) found no difference. On its own, in Lune, the walk is 33–45% faster.
+- **Replication:** publishing one change to a 40-item inventory on a Roblox server: full value **32% faster** (95% CI −40 to −27%), `Delta = true` **28% faster** (−33 to −27%).
+- **Network:** a whole request is unchanged within noise (−3%): measuring the payload is a small part of rate limiting, schema checks and authorization.
 
 ### Changed
 - `wally.toml` sets `homepage` to the documentation site, so wally.run links to it.
