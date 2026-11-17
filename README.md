@@ -29,7 +29,7 @@
 ```toml
 # wally.toml
 [dependencies]
-Constella = "layfate/constella@0.3.4"
+Constella = "layfate/constella@0.3.5"
 ```
 
 Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
@@ -176,7 +176,7 @@ local ok, bought = buy:Invoke("Sword") -- ok is false on a rejection, rate limit
 print("Bought a sword:", ok and bought)
 ```
 
-A complete demo game, with saved data, a coins UI and a shop, lives in [`src/server`](https://github.com/Layfate/Constella/tree/main/src/server) and [`src/client`](https://github.com/Layfate/Constella/tree/main/src/client). Each module also has a short example in [`examples/`](https://github.com/Layfate/Constella/tree/main/examples).
+A complete demo game, with saved data, a coins UI and a shop, lives in [`src/server`](https://github.com/Layfate/Constella/tree/main/src/server) and [`src/client`](https://github.com/Layfate/Constella/tree/main/src/client). Each module also has a short example in [`examples/`](https://github.com/Layfate/Constella/tree/main/examples). To start a new game, copy the [starter template](https://github.com/Layfate/Constella/tree/main/template); [Game layout](https://github.com/Layfate/Constella/blob/main/docs/GameLayout.md) explains where everything goes.
 
 ## Installation
 
@@ -189,7 +189,7 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 
 ```toml
 [dependencies]
-Constella = "layfate/constella@0.3.4"
+Constella = "layfate/constella@0.3.5"
 ```
 
 Autocomplete works through Wally's `Packages/Constella` link file as installed. To also use Constella's exported type names in your own annotations, re-export them into the link files with [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) after every `wally install`:

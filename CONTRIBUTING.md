@@ -17,6 +17,7 @@ Or build the dev place as a file with `rojo build dev.project.json -o ConstellaD
 src/shared/Constella/   the package (ReplicatedStorage.Packages.Constella)
 src/server/             demo server app (player data, rewards, a networked shop)
 src/client/             demo client app (replicated coins label, shop client)
+template/               starter game showing the recommended layout (see docs/GameLayout.md)
 examples/               one zero-setup script per module
 tests/server/           unit tests (TestKit + *.spec modules) and the server halves of integration tests
 tests/client/           client halves of the Network and Replication integration tests
@@ -25,6 +26,7 @@ docs/                   reference documentation
 assets/                 logo files
 default.project.json    package build (Wally, pesde, .rbxm)
 dev.project.json        full dev place: package, demo, examples and tests
+template.project.json   the starter template synced with the library source
 ```
 
 ## Tests
@@ -65,8 +67,8 @@ Run this in the Studio command bar (Edit mode). To compare with other libraries,
 ## Lint, format and type check
 
 ```bash
-selene src tests examples benchmarks
-stylua src tests examples benchmarks     # add --check to verify without changing files
+selene src tests examples benchmarks template
+stylua src tests examples benchmarks template     # add --check to verify without changing files
 ```
 
 Type checking uses [luau-lsp](https://github.com/JohnnyMorganz/luau-lsp) with Roblox definitions and a Rojo sourcemap:
@@ -76,6 +78,12 @@ rojo sourcemap dev.project.json --output sourcemap.json
 luau-lsp analyze --platform=roblox --sourcemap=sourcemap.json \
   --definitions=@roblox=globalTypes.d.luau --base-luaurc=.luaurc \
   src tests examples benchmarks
+
+# The template has its own sourcemap
+rojo sourcemap template.project.json --output template-sourcemap.json
+luau-lsp analyze --platform=roblox --sourcemap=template-sourcemap.json \
+  --definitions=@roblox=globalTypes.d.luau --base-luaurc=.luaurc \
+  template
 ```
 
 `globalTypes.d.luau` comes from the luau-lsp repository, at the version pinned in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). GitHub Actions runs all three checks with the same pinned versions on every push and pull request.

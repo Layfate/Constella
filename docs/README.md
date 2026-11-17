@@ -1,6 +1,6 @@
 # Constella documentation
 
-Reference pages for every module in Constella v0.3.4.
+Reference pages for every module in Constella v0.3.5.
 
 ## Architecture
 
@@ -8,6 +8,7 @@ Reference pages for every module in Constella v0.3.4.
 | --- | --- |
 | [Core / App](Core.md) | Services and controllers, dependency order, Init/Start/Stop, injection, client/server boundaries |
 | [Architecture](Architecture.md) | Design principles, module dependencies, naming conventions, testing approach |
+| [Game layout](GameLayout.md) | Where a game's services, controllers, shared code and server-only config go, with a starter template |
 
 ## Utilities
 

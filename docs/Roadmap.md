@@ -56,10 +56,18 @@ Still verification work. No new modules.
 - **Replication:** ✅ payload checks add plain keys and values inline: full sends 32% faster and Delta sends 28% faster on a Roblox server, with identical sizes and rejection reasons.
 - **Packaging:** ✅ wally.run links to the documentation; the README covers exported types with Wally.
 
+## v0.3.5 — starter template and typed demo · released 2026-11-17
+
+- **Template:** ✅ a starter game with the recommended layout across ReplicatedStorage, ServerScriptService, ServerStorage and StarterPlayerScripts, checked in CI and in a Studio playtest with a hostile client. See [Game layout](GameLayout.md).
+- **Demo:** ✅ typed with Constella's exported types instead of `any`.
+
 ## Next
 
 - **Pool:** measure memory over long sessions.
 - **Replication Delta:** run the Play-mode test (`tests/client/ReplicationIntegration.client.luau`) in Studio with real clients.
+
+- **Types for Wally and pesde users:** re-export the public types (`Context`, `Store<T>`, `Value<T>` and so on) from the root module. With those installs `Packages.Constella` is a link file, so submodule types can't be imported by path.
+- **Typed listeners and profile keys:** `Cleanup:Connect` types its callback as `(...any)`, and `profile:Set` accepts any key and value.
 
 ## Toward 1.0
 

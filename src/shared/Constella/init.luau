@@ -8,7 +8,7 @@
 	required directly: `require(Constella.Signal)`.
 ]=]
 
-local VERSION = "0.3.4"
+local VERSION = "0.3.5"
 local AUTHOR = "Zense"
 
 -- Modules shipped in this version (key -> child ModuleScript name).

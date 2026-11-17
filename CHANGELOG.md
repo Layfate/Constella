@@ -2,6 +2,17 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
+## 0.3.5 — 2026-11-17
+
+A starter template, a typed demo and a Game layout guide. The library code is identical to 0.3.4 apart from the version number.
+
+### Added
+- **Starter template** (`template/`): a small working game laid out across ReplicatedStorage, ServerScriptService, ServerStorage and StarterPlayerScripts, with one `Main` Script per side, typed services and controllers, a server-checked shop, per-player replication and server-only config. Type checked, formatted and linted in CI; excluded from the Wally and pesde packages.
+- **Docs:** [Game layout](https://github.com/Layfate/Constella/blob/main/docs/GameLayout.md) covers where code goes, dependencies through `context:Get`, typing, and security rules.
+
+### Changed
+- **Demo:** the services and controllers in `src/server` and `src/client` use Constella's exported types (`Core.Context`, `Store<T>`, `State.Value<T>`, `Cleanup`) instead of `any`. Dependencies are typed with type-only `typeof(require(...))` imports, and the reward service connects through `Signal:Connect` so profile data is type checked. Behaviour is unchanged.
+
 ## 0.3.4 — 2026-11-16
 
 Documentation only: the code is identical to 0.3.3.

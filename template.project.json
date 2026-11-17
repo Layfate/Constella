@@ -1,0 +1,32 @@
+{
+	"name": "Constella Template",
+	"tree": {
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"Packages": {
+				"$className": "Folder",
+				"Constella": {
+					"$path": "src/shared/Constella"
+				}
+			},
+			"Shared": {
+				"$path": "template/src/shared"
+			}
+		},
+		"ServerScriptService": {
+			"Server": {
+				"$path": "template/src/server"
+			}
+		},
+		"ServerStorage": {
+			"$path": "template/src/storage"
+		},
+		"StarterPlayer": {
+			"StarterPlayerScripts": {
+				"Client": {
+					"$path": "template/src/client"
+				}
+			}
+		}
+	}
+}

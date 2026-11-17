@@ -4,9 +4,15 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"))
+local Packages = ReplicatedStorage:WaitForChild("Packages")
+local Constella = require(Packages:WaitForChild("Constella"))
+-- Required directly only for its exported types; Constella loads the same module.
+local Core = require(Packages.Constella.Core)
 local Network = Constella.Network
 local Check = Network.Check
+
+-- A type-only import: the instance comes from context:Get.
+type RewardService = typeof(require(script.Parent.RewardService))
 
 local CATALOG: { [string]: number } = {
 	Sword = 10,
@@ -19,8 +25,8 @@ local ShopService = {
 	Dependencies = { "RewardService" },
 }
 
-function ShopService.Init(_self: any, context: any)
-	local rewards = context:Get("RewardService")
+function ShopService.Init(_self: typeof(ShopService), context: Core.Context)
+	local rewards: RewardService = context:Get("RewardService")
 	local logger = Constella.Debug.Logger.new("ShopService")
 
 	local server = context.Cleanup:Add(Network.Server.new("Shop", { Logger = logger }))

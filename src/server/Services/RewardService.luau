@@ -4,7 +4,16 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"))
+local Packages = ReplicatedStorage:WaitForChild("Packages")
+local Constella = require(Packages:WaitForChild("Constella"))
+-- Required directly only for their exported types; Constella loads the same modules.
+local Cleanup = require(Packages.Constella.Cleanup)
+local Core = require(Packages.Constella.Core)
+local State = require(Packages.Constella.State)
+
+-- A type-only import: nothing is required at runtime. The instance itself
+-- comes from context:Get, so the App still controls the startup order.
+type PlayerDataService = typeof(require(script.Parent.PlayerDataService))
 
 local WELCOME_REWARD = Constella.Random.lootTable({
 	{ Value = 10, Weight = 70 },
@@ -17,19 +26,24 @@ local RewardService = {
 	Environment = "Server",
 	Dependencies = { "PlayerDataService" },
 
-	_coins = {} :: { [Player]: any },
-	_sessions = {} :: { [Player]: any },
+	_coins = {} :: { [Player]: State.Value<number> },
+	_sessions = {} :: { [Player]: Cleanup.Cleanup },
 }
 
-function RewardService.Init(self: any, context: any)
-	local store = context:Get("PlayerDataService").Store
+export type RewardService = typeof(RewardService)
+
+function RewardService.Init(self: RewardService, context: Core.Context)
+	local playerData: PlayerDataService = context:Get("PlayerDataService")
+	local store = playerData.Store
 	local replicator = context.Cleanup:Add(Constella.Replication.Server.new("Player"))
 
-	context.Cleanup:Connect(store.Loaded, function(player: Player, profile: any)
+	-- Signal:Connect keeps the listener's types (Cleanup:Connect takes any signal,
+	-- so it can't), and Cleanup:Add disconnects it when the service stops.
+	context.Cleanup:Add(store.Loaded:Connect(function(player, profile)
 		local session = Constella.Cleanup.new()
 		self._sessions[player] = session
 
-		local coins = session:Add(Constella.State.new(profile.Data.Coins))
+		local coins: State.Value<number> = session:Add(Constella.State.new(profile.Data.Coins))
 		self._coins[player] = coins
 		session:Add(function()
 			self._coins[player] = nil
@@ -50,20 +64,20 @@ function RewardService.Init(self: any, context: any)
 			self:AddCoins(player, reward)
 			print(("[Demo] %s received a welcome reward of %d coins"):format(player.Name, reward))
 		end
-	end)
+	end))
 
-	context.Cleanup:Connect(store.Released, function(player: Player)
+	context.Cleanup:Add(store.Released:Connect(function(player)
 		local session = self._sessions[player]
 		if session then
 			self._sessions[player] = nil
 			session:Destroy()
 		end
-	end)
+	end))
 end
 
 --- Server-only API. Amounts are validated here because callers may forward
 --- values that originated from a client.
-function RewardService.AddCoins(self: any, player: Player, amount: number)
+function RewardService.AddCoins(self: RewardService, player: Player, amount: number)
 	if type(amount) ~= "number" or amount ~= amount or amount <= 0 or amount % 1 ~= 0 or amount > 1e6 then
 		error(("[RewardService] Invalid coin amount: %s"):format(tostring(amount)), 2)
 	end
@@ -77,7 +91,7 @@ function RewardService.AddCoins(self: any, player: Player, amount: number)
 end
 
 --- Removes coins if the player can afford it. Returns false otherwise.
-function RewardService.SpendCoins(self: any, player: Player, amount: number): boolean
+function RewardService.SpendCoins(self: RewardService, player: Player, amount: number): boolean
 	if type(amount) ~= "number" or amount ~= amount or amount <= 0 or amount % 1 ~= 0 then
 		error(("[RewardService] Invalid coin amount: %s"):format(tostring(amount)), 2)
 	end
@@ -91,7 +105,7 @@ function RewardService.SpendCoins(self: any, player: Player, amount: number): bo
 	return true
 end
 
-function RewardService.GetCoins(self: any, player: Player): number?
+function RewardService.GetCoins(self: RewardService, player: Player): number?
 	local coins = self._coins[player]
 	return if coins then coins:Get() else nil
 end
