@@ -114,19 +114,8 @@ jobs:
       # downloaded for the test place and never committed.
       PROFILESTORE_COMMIT: 9580f7c59cd3c04808e43c92e24b9afaefba679b
       PROFILESTORE_SHA256: ad43737203688b8e88cab34ebe8c483000c157e53bfb41e35f1b49ee89d0c95f
-      # Comparison libraries for the benchmarks (sleitnick/signal 2.0.3 and
-      # sleitnick/trove 1.8.0), pinned the same way.
-      RBXUTIL_COMMIT: 31f9120fca021e3dec275b42bc7047d626962082
-      SIGNAL_SHA256: a2c3a044ad291f1b8ea7d9ab38147d0ca8807c22532a45f31f33c79b89b74124
-      TROVE_SHA256: 6037d12780509f4d7b6119c437b29918f230c2b90344247d591c58179ecef4b1
-      # LemonSignal 2.0.0, Janitor 1.17.0 and evaera/roblox-lua-promise 4.0.0.
-      LEMONSIGNAL_COMMIT: 540ce9dc5fdce5cb275a7c69c66669706d9c9bd2
-      LEMONSIGNAL_SHA256: 944fdda27e5e97bd2c44f3a4d7850d1838fba461391fb8a79b0ebffa04933ef2
-      JANITOR_COMMIT: af930bf8939b7758b23bf62fb651ab5f348cdc52
-      JANITOR_SHA256: 5487974b6785b25f15cadb11d0e471543e37059b7ea51975dcaae40f9a30bd91
-      JANITOR_PROMISE_SHA256: 218c40224809611b05a587d76b134a9707f37b83c18be158fe557cee1ff07be5
-      PROMISE_COMMIT: 2c6f433903275e689ba1d48402d4a9d6fdc605a5
-      PROMISE_SHA256: 5d69cf99a9741048855decb1d8cb5d7668f362f40c769d1500ce8f9c20dd319f
+      # The benchmark comparison libraries are pinned by commit and SHA-256
+      # in .github/bench-libs.json (shared with local runs).
     steps:
       - name: Check for the Open Cloud key
         id: key
@@ -186,39 +175,9 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           git worktree add --detach build/baseline "$BASE_SHA"
-          mkdir -p build/libs/janitor
-          raw() { gh api "repos/$1/contents/$2?ref=$3" -H "Accept: application/vnd.github.raw" > "$4"; }
-          for lib in signal trove; do
-            raw Sleitnick/RbxUtil "modules/$lib/init.luau" "$RBXUTIL_COMMIT" "build/libs/$lib.luau"
-          done
-          raw Data-Oriented-House/LemonSignal src/LemonSignal.lua "$LEMONSIGNAL_COMMIT" build/libs/lemonsignal.lua
-          raw howmanysmall/Janitor src/init.luau "$JANITOR_COMMIT" build/libs/janitor/init.luau
-          raw howmanysmall/Janitor src/Promise.luau "$JANITOR_COMMIT" build/libs/janitor/Promise.luau
-          raw evaera/roblox-lua-promise lib/init.lua "$PROMISE_COMMIT" build/libs/promise.lua
-          sha256sum --check <<SUMS
-          $SIGNAL_SHA256  build/libs/signal.luau
-          $TROVE_SHA256  build/libs/trove.luau
-          $LEMONSIGNAL_SHA256  build/libs/lemonsignal.lua
-          $JANITOR_SHA256  build/libs/janitor/init.luau
-          $JANITOR_PROMISE_SHA256  build/libs/janitor/Promise.luau
-          $PROMISE_SHA256  build/libs/promise.lua
-          SUMS
-          python3 - <<'EOF'
-          import json
-          project = json.load(open("ci.project.json", encoding="utf-8"))
-          tree = project["tree"]
-          tree["ReplicatedStorage"]["Packages"]["ConstellaBaseline"] = {"$path": "build/baseline/src/shared/Constella"}
-          tree["ServerStorage"]["ConstellaBenchmarks"] = {"$path": "benchmarks"}
-          tree["ServerStorage"]["BenchmarkLibs"] = {
-              "$className": "Folder",
-              "Signal": {"$path": "build/libs/signal.luau"},
-              "Trove": {"$path": "build/libs/trove.luau"},
-              "LemonSignal": {"$path": "build/libs/lemonsignal.lua"},
-              "Janitor": {"$path": "build/libs/janitor"},
-              "Promise": {"$path": "build/libs/promise.lua"},
-          }
-          json.dump(project, open("ci.generated.project.json", "w", encoding="utf-8"), indent="\t")
-          EOF
+          python3 .github/scripts/fetch_bench_libs.py \
+            --baseline build/baseline/src/shared/Constella \
+            --project ci.generated.project.json
           rojo build ci.generated.project.json -o build/bench.rbxl
 
       - name: Run the benchmarks on Roblox (Open Cloud)

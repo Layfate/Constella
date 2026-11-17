@@ -176,6 +176,123 @@ return function(t, Constella)
 		expect(Signal.is({})).toBe(false)
 	end)
 
+	t.describe("connection list", function()
+		local function recorder(signal, names)
+			local calls, connections = {}, {}
+			for _, name in names do
+				connections[name] = signal:Connect(function()
+					table.insert(calls, name)
+				end)
+			end
+			return calls, connections
+		end
+
+		t.it("keeps order and count when the first, a middle and the last connection go", function()
+			local signal = Signal.new()
+			local calls, connections = recorder(signal, { "a", "b", "c", "d", "e" })
+			connections.a:Disconnect()
+			connections.c:Disconnect()
+			connections.e:Disconnect()
+			expect(signal:GetConnectionCount()).toBe(2)
+			signal:Fire()
+			expect(calls).toEqual({ "b", "d" })
+			signal:Connect(function()
+				table.insert(calls, "f")
+			end)
+			connections.b:Disconnect()
+			connections.d:Disconnect()
+			table.clear(calls)
+			signal:Fire()
+			expect(calls).toEqual({ "f" })
+			expect(signal:GetConnectionCount()).toBe(1)
+		end)
+
+		t.it("reuses an emptied signal", function()
+			local signal = Signal.new()
+			local _, connections = recorder(signal, { "a" })
+			connections.a:Disconnect()
+			expect(signal:GetConnectionCount()).toBe(0)
+			signal:Fire()
+			local calls = recorder(signal, { "b", "c" })
+			signal:Fire()
+			expect(calls).toEqual({ "b", "c" })
+		end)
+
+		t.it("does not run a listener connected after the last one was disconnected mid-Fire", function()
+			local signal = Signal.new()
+			local calls = {}
+			local last
+			signal:Connect(function()
+				table.insert(calls, "first")
+				last:Disconnect()
+				signal:Connect(function()
+					table.insert(calls, "late")
+				end)
+			end)
+			last = signal:Connect(function()
+				table.insert(calls, "last")
+			end)
+			signal:Fire()
+			expect(calls).toEqual({ "first" })
+		end)
+
+		t.it("stops a Fire when a listener calls DisconnectAll, and runs new listeners next time", function()
+			local signal = Signal.new()
+			local calls = {}
+			signal:Connect(function()
+				table.insert(calls, "first")
+				signal:DisconnectAll()
+				signal:Connect(function()
+					table.insert(calls, "new")
+				end)
+			end)
+			signal:Connect(function()
+				table.insert(calls, "second")
+			end)
+			signal:Fire()
+			expect(calls).toEqual({ "first" })
+			signal:Fire()
+			expect(calls).toEqual({ "first", "new" })
+			expect(signal:GetConnectionCount()).toBe(1)
+		end)
+
+		t.it("runs Once listeners once, in order, among others", function()
+			local signal = Signal.new()
+			local calls = {}
+			signal:Connect(function()
+				table.insert(calls, "a")
+			end)
+			signal:Once(function()
+				table.insert(calls, "once")
+			end)
+			signal:Connect(function()
+				table.insert(calls, "b")
+			end)
+			signal:Fire()
+			signal:Fire()
+			expect(calls).toEqual({ "a", "once", "b", "a", "b" })
+			expect(signal:GetConnectionCount()).toBe(2)
+		end)
+	end)
+
+	t.it("keeps working after user code cancels an idle runner thread", function()
+		-- sleitnick/signal and LemonSignal raise on every later Fire in this
+		-- case (see the benchmark report's behaviour table).
+		local signal = Signal.new()
+		local runner
+		signal:Connect(function()
+			runner = coroutine.running()
+		end)
+		signal:Fire()
+		task.cancel(runner)
+		local calls = 0
+		signal:Connect(function()
+			calls += 1
+		end)
+		signal:Fire()
+		expect(calls).toBe(1)
+	end)
+
 	t.it("Wait skips a waiting thread that was cancelled", function()
 		local errors = {}
 		local signal = Signal.new({

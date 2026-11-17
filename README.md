@@ -29,7 +29,7 @@
 ```toml
 # wally.toml
 [dependencies]
-Constella = "layfate/constella@0.3.6"
+Constella = "layfate/constella@0.3.7"
 ```
 
 Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
@@ -38,7 +38,7 @@ Also available as a ready-to-insert model file (**[download `Constella.rbxm`](ht
 - **Safe networking by default.** Every client request passes rate limiting, payload caps, schema validation and your authorization check before your code runs. Clients only ever see generic error codes; the details stay on the server.
 - **An explicit architecture.** Apps start services in dependency order, catch duplicates, missing dependencies and cycles before any code runs, keep client and server code apart, and roll back cleanly if startup fails. No globals, no singletons, no auto-discovery.
 - **Player data that fails closed.** Migrations, template reconciliation and session-loss handling sit on top of ProfileStore's session locking. A failed load never overwrites saved data.
-- **Tested and measured.** Unit tests, Data failure simulations, tests against real ProfileStore, Play-mode integration tests with a hostile client against real remotes, and published [benchmarks](https://github.com/Layfate/Constella/blob/main/docs/Benchmarks.md) against other libraries and hand-written baselines, including where Constella is slower.
+- **Tested and measured.** Unit tests, Data failure simulations, tests against real ProfileStore, Play-mode integration tests with a hostile client against real remotes, load tests with real clients and engine-measured traffic, a soak harness for multi-hour runs, and published [benchmarks](https://github.com/Layfate/Constella/blob/main/docs/Benchmarks.md) against other libraries and hand-written baselines, including where Constella is slower. One script reproduces them on your machine.
 
 > [!NOTE]
 > `Constella.Data` runs on [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore), which you install separately. Every CI run tests it on real DataStores on real Roblox servers, including a player moving to a second server. See [Data](https://github.com/Layfate/Constella/blob/main/docs/Data.md) for exactly what's verified.
@@ -71,7 +71,7 @@ Each module has a well-known alternative. Constella's case is that all 13 share 
 | Player data | ProfileStore directly | [Data](https://github.com/Layfate/Constella/blob/main/docs/Data.md) | Built **on** ProfileStore: adds migrations, template reconciliation, `Changed` signals, kick-on-session-loss and a shutdown budget that waits for every save |
 | App structure | Knit | [Core](https://github.com/Layfate/Constella/blob/main/docs/Core.md) | Explicit apps instead of global singletons: dependency order, cycle and environment checks before any code runs, and rollback when startup fails |
 | Cleanup | Trove, Janitor, Maid | [Cleanup](https://github.com/Layfate/Constella/blob/main/docs/Cleanup.md) | Level with Janitor and about 6× faster than Trove for functions on a Roblox server, with half of Trove's memory ([benchmarks](https://github.com/Layfate/Constella/blob/main/docs/Benchmarks.md)) |
-| Signals | GoodSignal, sleitnick/signal | [Signal](https://github.com/Layfate/Constella/blob/main/docs/Signal.md) | Catches each listener's errors and calls listeners in order. With the same error catching, `Fire` is within 1–11% of sleitnick/signal (depending on the server) and faster than LemonSignal; `Connect`+`Disconnect` is slower; and it uses the least memory per connection of the three |
+| Signals | GoodSignal, sleitnick/signal | [Signal](https://github.com/Layfate/Constella/blob/main/docs/Signal.md) | Catches each listener's errors, calls listeners in order and survives cancelled threads. With the same error catching, sleitnick/signal is faster (`Fire` 6–24%, `Connect`+`Disconnect` about 1.2×); Signal uses the least memory per connection of the three |
 | Promises | evaera/promise | [Promise](https://github.com/Layfate/Constella/blob/main/docs/Promise.md) | A smaller, strictly typed core: cancellation, timeouts, `all`/`race`/`allSettled`, retry with backoff. About 6× faster than evaera/promise for a `resolve`+`Then`+`Await` and a tenth of the memory per promise; evaera/promise has a larger API and a long track record |
 | Reactive state | Fusion | [State](https://github.com/Layfate/Constella/blob/main/docs/State.md) | Small reactive values with property bindings, not a UI framework. For building whole interfaces declaratively, Fusion does far more |
 | Zones | ZonePlus | [Zone](https://github.com/Layfate/Constella/blob/main/docs/Zone.md) | Simple point tests against boxes and spheres, with hysteresis at the edges, at about 0.3 µs per tracked item per step. ZonePlus supports more shapes and features |
@@ -189,7 +189,7 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 
 ```toml
 [dependencies]
-Constella = "layfate/constella@0.3.6"
+Constella = "layfate/constella@0.3.7"
 ```
 
 Autocomplete works through Wally's `Packages/Constella` link file as installed. Every public type is exported from the root module (`Constella.Context`, `Constella.Store<T>`, `Constella.Value<T>` and so on). To use those type names in your own annotations, re-export them into the link files with [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) after every `wally install`:

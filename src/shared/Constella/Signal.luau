@@ -51,21 +51,31 @@ local function traceback(err: any): string
 	return debug.traceback(tostring(err), 2)
 end
 
--- Connections form a doubly linked list in connection order.
+-- Connections form a circular doubly linked list in connection order, with
+-- the signal itself as the sentinel: its NEXT slot is the first connection
+-- and its PREVIOUS slot the last, and an empty signal points at itself.
+-- Connect and Disconnect therefore never branch on "is this the head or the
+-- tail", and a connection doesn't need its own reference to the signal.
 --
 -- Layout: internal fields live in the table's array part, which Luau stores
 -- compactly; only the public `Connected` field uses the hash part.
---   [1] callback   [2] signal   [3] previous (or false)   [4] next (or false)
---   [5] id: increases with every Connect (one counter shared by every
---       signal, so no per-signal field to update); negative for Once
+--   [1] callback, or false once disconnected
+--   [2] previous   [3] next (a connection or the signal)
+--   [4] id: increases with every Connect (one counter shared by every
+--       signal, so no per-signal field to update); negative for Once. The
+--       signal's own id is math.huge.
 --
 -- Fire only visits ids that existed when it started, which gives snapshot
--- semantics without copying the list. A disconnected node keeps its next
--- pointer, so a Fire that is walking past it carries on. Its callback is
--- cleared, so a Connection kept after Disconnect doesn't keep the listener
--- alive. DisconnectAll (and Destroy) also clear every node's signal and
--- previous pointer: then nothing in the chain references the signal.
-local CALLBACK, SIGNAL, PREVIOUS, NEXT, ID = 1, 2, 3, 4, 5
+-- semantics without copying the list, and it stops at the signal, whose id
+-- is larger than any connection's. A disconnected node keeps its next
+-- pointer, so a Fire that is walking past it carries on (next pointers only
+-- ever lead to later connections or the signal, so the walk always ends).
+-- Its callback is cleared, so a Connection kept after Disconnect doesn't
+-- keep the listener alive. DisconnectAll (and Destroy) also clear every
+-- node's previous and next pointers: then nothing in the chain references
+-- the signal.
+local CALLBACK, PREVIOUS, NEXT, ID = 1, 2, 3, 4
+local SENTINEL_ID = math.huge
 
 -- The id of the most recent connection, across all signals.
 local lastConnectionId = 0
@@ -151,18 +161,10 @@ function ConnectionClass.Disconnect(self: any)
 		return
 	end
 	self.Connected = false
-	local signal = self[SIGNAL]
+	-- Neighbours are connections or the signal (the sentinel), never empty.
 	local previous, following = self[PREVIOUS], self[NEXT]
-	if previous then
-		previous[NEXT] = following
-	else
-		signal._head = following or nil
-	end
-	if following then
-		following[PREVIOUS] = previous
-	else
-		signal._tail = previous or nil
-	end
+	previous[NEXT] = following
+	following[PREVIOUS] = previous
 	self[CALLBACK] = false
 end
 ConnectionClass.Destroy = ConnectionClass.Disconnect
@@ -185,23 +187,18 @@ local function append(self: any, callback: any, once: boolean, method: string): 
 	end
 	lastConnectionId += 1
 	local id = lastConnectionId
-	local tail = self._tail
+	local tail = self[PREVIOUS]
 	-- Array slots keep connections compact; Connected is the public field.
 	-- selene: allow(mixed_table)
 	local connection = setmetatable({
 		callback,
+		tail,
 		self,
-		tail or false,
-		false,
 		if once then -id else id,
 		Connected = true,
 	}, ConnectionClass)
-	if tail then
-		tail[NEXT] = connection
-	else
-		self._head = connection
-	end
-	self._tail = connection
+	tail[NEXT] = connection
+	self[PREVIOUS] = connection
 	return connection
 end
 
@@ -211,17 +208,12 @@ function SignalClass.Connect(self: any, callback: (...any) -> ()): Connection
 	end
 	lastConnectionId += 1
 	local id = lastConnectionId
-	local tail = self._tail
+	local tail = self[PREVIOUS]
 	-- Array slots per the layout above; Connected is the public field.
 	-- selene: allow(mixed_table)
-	local connection: any =
-		setmetatable({ callback :: any, self, tail or false, false, id, Connected = true }, ConnectionClass)
-	if tail then
-		tail[NEXT] = connection
-	else
-		self._head = connection
-	end
-	self._tail = connection
+	local connection: any = setmetatable({ callback :: any, tail, self, id, Connected = true }, ConnectionClass)
+	tail[NEXT] = connection
+	self[PREVIOUS] = connection
 	return connection
 end
 
@@ -242,8 +234,8 @@ end
 
 function SignalClass.Fire(self: any, ...: any)
 	-- A destroyed signal has no connections, so it returns here too.
-	local node = self._head
-	if not node then
+	local node = self[NEXT]
+	if node == self then
 		return
 	end
 	local lastId = lastConnectionId
@@ -260,16 +252,18 @@ function SignalClass.Fire(self: any, ...: any)
 	-- Dispatch is written out here (one call fewer per listener). A runner
 	-- clears freeRunner while its listener runs and restores it when the
 	-- listener returns, so a listener that yields makes the next one start
-	-- on another runner.
+	-- on another runner. A disconnected node's callback slot is false, so
+	-- reading the callback is also the Connected check. The walk ends at
+	-- the signal (id math.huge), or at false after DisconnectAll.
 	while node do
 		local id = node[ID]
 		if id < 0 then
 			if -id > lastId then
 				break
 			end
-			if node.Connected then
-				-- Read before Disconnect, which clears the callback slot.
-				local callback = node[CALLBACK]
+			local callback = node[CALLBACK]
+			if callback then
+				-- Disconnect clears the callback slot; it was read above.
 				node:Disconnect()
 				if freeRunner == nil then
 					freeRunner = takeSpareRunner()
@@ -280,11 +274,12 @@ function SignalClass.Fire(self: any, ...: any)
 			if id > lastId then
 				break
 			end
-			if node.Connected then
+			local callback = node[CALLBACK]
+			if callback then
 				if freeRunner == nil then
 					freeRunner = takeSpareRunner()
 				end
-				task.spawn(freeRunner :: thread, onError, node[CALLBACK], ...)
+				task.spawn(freeRunner :: thread, onError, callback, ...)
 			end
 		end
 		node = node[NEXT]
@@ -292,16 +287,19 @@ function SignalClass.Fire(self: any, ...: any)
 end
 
 function SignalClass.DisconnectAll(self: any)
-	local node = self._head
-	while node do
+	local node = self[NEXT]
+	while node ~= self do
+		local following = node[NEXT]
 		node.Connected = false
 		node[CALLBACK] = false
-		node[SIGNAL] = false
+		-- A Fire walking this list stops at the cleared next pointer; every
+		-- listener it could still reach was just disconnected anyway.
 		node[PREVIOUS] = false
-		node = node[NEXT]
+		node[NEXT] = false
+		node = following
 	end
-	self._head = nil
-	self._tail = nil
+	self[NEXT] = self
+	self[PREVIOUS] = self
 end
 
 function SignalClass.Destroy(self: any)
@@ -316,8 +314,8 @@ end
 --- don't keep a count, so they stay as cheap as possible).
 function SignalClass.GetConnectionCount(self: any): number
 	local count = 0
-	local node = self._head
-	while node do
+	local node = self[NEXT]
+	while node ~= self do
 		count += 1
 		node = node[NEXT]
 	end
@@ -344,13 +342,20 @@ function Signal.new<T...>(options: Options?): Signal<T...>
 			onError = options.OnError
 		end
 	end
-	local self = setmetatable({
-		_head = nil,
-		_tail = nil,
+	-- The signal is the list's sentinel (see the layout above): array slots
+	-- [1] unused, [2] last connection, [3] first connection, [4] math.huge.
+	-- selene: allow(mixed_table)
+	local self: any = setmetatable({
+		false :: any,
+		false,
+		false,
+		SENTINEL_ID,
 		_destroyed = false,
 		_onError = onError,
 	}, SignalClass)
-	return (self :: any) :: Signal<T...>
+	self[PREVIOUS] = self
+	self[NEXT] = self
+	return self :: Signal<T...>
 end
 
 --- Returns true if `value` is a Constella signal.

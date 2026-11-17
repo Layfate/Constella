@@ -41,7 +41,7 @@ Still verification work. No new modules.
 - **Lifecycle:** ✅ cancelled Data loads, Component `Start` threads, Signal runners and Pool prewarm failures clean up fully.
 - **Network:** ✅ per-player and overall in-flight request limits (16 and 256 by default).
 - **Promise:** ✅ executors and handlers on recycled threads: about 2× faster and up to 56% less memory per promise.
-- **Replication:** ✅ one validation walk (full sends a third faster) and the opt-in **Delta** mode (95% fewer bytes for small changes to big tables).
+- **Replication:** ✅ one validation walk (full sends a third faster) and the opt-in **Delta** mode (95% fewer bytes for small changes to big tables by estimate; 89% measured on the wire with real clients in 0.3.7).
 - **Zone, Network, Signal:** ✅ fewer allocations and checks per step, request and connection.
 - **Benchmarks:** ✅ every module, a 50-player tick, LemonSignal/Janitor/evaera Promise as competitors, confidence intervals, and a CI gate that fails a pull request with a regression.
 
@@ -65,8 +65,16 @@ Still verification work. No new modules.
 
 - **Types:** ✅ all 71 public types are exported from the root module (`Constella.Context`, `Constella.Store<T>`, ...), so Wally and pesde users can use them. Lazy loading is unchanged and tested.
 
+## v0.3.7 — real clients and measured traffic · released 2026-11-17
+
+- **Real clients:** ✅ load tests with 1–8 real Studio clients over the network replicator; every replica matched the server.
+- **Bandwidth:** ✅ measured from the engine's counters: Delta sends 130 bytes against 1,184 for the full value (89% less).
+- **Signal:** ✅ 144 bytes per connection instead of 160, compared like-for-like with sleitnick/signal (which is still faster).
+- **Soak:** harness shipped; a multi-hour result is not published yet.
+
 ## Next
 
+- **Soak:** publish a multi-hour soak result with its control run.
 - **Pool:** measure memory over long sessions.
 - **Replication Delta:** run the Play-mode test (`tests/client/ReplicationIntegration.client.luau`) in Studio with real clients.
 - **Typed listeners and profile keys:** `Cleanup:Connect` types its callback as `(...any)`, and `profile:Set` accepts any key and value.
