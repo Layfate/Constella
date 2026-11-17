@@ -47,7 +47,7 @@ Everything else (Signal, Cleanup, Pool, Random, State, Component) is unchanged w
 | Resolved promise | **322 bytes** | 416 bytes |
 | Pending promise from `Then` | **242 bytes** | 549 bytes |
 
-| Bytes sent per update (one field of a 40-item inventory changes) | Bytes |
+| Bytes sent per update (one field of a 40-item inventory changes), estimated; [measured](#real-clients): 1,184 and 130 | Bytes |
 | --- | ---: |
 | Full value (both builds) | 1,929 |
 | **`Delta = true`** (new) | **90** |
@@ -141,7 +141,7 @@ The unit tests include the same kind of checks (plus Data: a player released dur
 - **Signal is slower than sleitnick/signal.** With per-listener error catching on all sides, `Fire` took 3–11% longer on this server (within 1% on the faster one used for v0.3.0) and was faster than LemonSignal. `Connect`+`Disconnect` is about 1.25× sleitnick/signal's cost here: Constella also checks its arguments, keeps listeners in connection order, disconnects in `O(1)` and releases the listener on `Disconnect`. It uses the least memory per connection of the three. See [Signal against sleitnick/signal](#signal-against-sleitnicksignal) for a newer local run and why.
 - **Cleanup is level with Janitor and about 6.6× faster than Trove** for functions, with half of Trove's memory. For RBXScriptConnections all three are close, because the engine's own `Disconnect` dominates.
 - **Pool is about 2.8× faster** than cloning and destroying a Part each time.
-- **Replication full sends got a third faster** by checking and measuring a value in one walk instead of two. **Delta** cuts the bytes for a small change to a 40-item inventory by 95% (1,929 → 90) for about 54% more server time per update than a full send. That's the usual trade: bandwidth is the scarcer resource on Roblox servers, which is why Delta exists, and why it's opt-in. With real clients and real sends, Delta measured 89% fewer bytes on the wire and *less* total server time than a full send ([Real clients](#real-clients)).
+- **Replication full sends got a third faster** by checking and measuring a value in one walk instead of two. **Delta** cuts the bytes for a small change to a 40-item inventory by 89% on the wire, measured with real clients (1,184 → 130 bytes; the estimate below said 95%, 1,929 → 90). In the library-only benchmark, where sends are a no-op, it costs about 54% more server time per update than a full send; with real sends it took *less* total server time than a full send ([Real clients](#real-clients)). It's opt-in because it only pays off for small changes to big tables.
 - **Zone** costs about 0.3 µs per tracked item per step, 8–13% less than before: it no longer allocates per step, and built-in position getters skip the protected call.
 - **Random:** `lootTable:Roll` is 19× faster than `Random.choose` and 2× faster than a hand-written precomputed scan, so use a loot table for anything rolled often.
 - **The synthetic workload with 50 simulated players** took 0.36 ms in the recorded run, 11% less than the baseline. Actual replication sends were disabled.

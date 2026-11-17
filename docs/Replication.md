@@ -57,12 +57,12 @@ replicator:ShareWith(player, "Inventory", inventory)
 
 local nextValue = table.clone(inventory:Get())
 nextValue.Coins += 10
-inventory:Set(nextValue) -- sends about 90 bytes instead of the whole 40-item inventory (~1.9 KB)
+inventory:Set(nextValue) -- about 130 bytes on the wire instead of the whole 40-item inventory (~1.2 KB)
 ```
 
 - **What clients see is the same.** The client applies the patch to its copy and sets the result as a new table, so subscribers run exactly as they would for a full value. Unchanged nested tables are shared between the old and new value.
 - **Safe with in-place edits.** The server diffs against its own private copy of what clients were last sent, not against the table you passed before. Editing the current table in place and then setting a copy still replicates every change.
 - **Ordering and recovery.** Each patch names the version it builds on. A patch that arrives before that version (during the initial sync) is kept until the value arrives, up to 64 per name. A patch that can't be applied makes the client fetch a fresh snapshot, one fetch at a time. The server rate-limits fetches; a refused fetch is retried up to 5 times, waiting 1, 2, 4 and 8 seconds.
-- **The trade-off is CPU for bandwidth.** Diffing walks the value once more, so a Delta update costs about 50% more server time than a full send (about 14 µs more for a 40-item inventory on a Roblox server), and saves about 95% of the bytes. See [Benchmarks](Benchmarks.md).
+- **The trade-off is CPU for bandwidth.** Diffing walks the value once more, so a Delta update costs about 50% more server time than a full send (about 14 µs more for a 40-item inventory on a Roblox server), and saves about 89% of the bytes, measured on the wire with real clients: 130 bytes against 1,184 for the full value. With real sends, the smaller payload more than pays for the diff: Delta took less total server time than a full send (0.43 against 0.53 ms per tick at 8 clients). See [Benchmarks](Benchmarks.md#real-clients).
 - **Use it for arrays and string-keyed dictionaries**, which is what RemoteEvents carry faithfully anyway. Patches are built only from arrays and string-keyed fields, so they survive serialization.
-- It's off by default. The full-value path has been verified with real clients in Studio Play mode; Delta is covered by unit tests on the server (including 300 random updates kept in sync, with in-place edits) and by a Play-mode test in `tests/client/ReplicationIntegration.client.luau`.
+- It's off by default. Both the full-value path and Delta are verified with 1–8 real Studio clients over the network replicator (`tests/load/`): every client's replica matched the server's value exactly. Delta is also covered by unit tests on the server (including 300 random updates kept in sync, with in-place edits) and by a Play-mode test in `tests/client/ReplicationIntegration.client.luau`.

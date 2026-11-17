@@ -41,7 +41,7 @@ Still verification work. No new modules.
 - **Lifecycle:** ✅ cancelled Data loads, Component `Start` threads, Signal runners and Pool prewarm failures clean up fully.
 - **Network:** ✅ per-player and overall in-flight request limits (16 and 256 by default).
 - **Promise:** ✅ executors and handlers on recycled threads: about 2× faster and up to 56% less memory per promise.
-- **Replication:** ✅ one validation walk (full sends a third faster) and the opt-in **Delta** mode (95% fewer bytes for small changes to big tables).
+- **Replication:** ✅ one validation walk (full sends a third faster) and the opt-in **Delta** mode (95% fewer bytes for small changes to big tables by estimate; 89% measured on the wire with real clients in 0.3.7).
 - **Zone, Network, Signal:** ✅ fewer allocations and checks per step, request and connection.
 - **Benchmarks:** ✅ every module, a 50-player tick, LemonSignal/Janitor/evaera Promise as competitors, confidence intervals, and a CI gate that fails a pull request with a regression.
 
