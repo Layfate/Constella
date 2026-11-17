@@ -2,6 +2,17 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
+## 0.3.6 — 2026-11-17
+
+Every public type is now exported from the root module. No runtime behaviour changed.
+
+### Added
+- **Types:** the root module exports all 71 public types, so `local Constella = require(Packages.Constella)` is enough to write `Constella.Context`, `Constella.Store<PlayerData>`, `Constella.Value<number>`, `Constella.Signal<T...>` and so on. Names match each module's own, with a module prefix where two would clash (`NetworkServer`/`ReplicationServer`, `NetworkServerOptions`, `ComponentOptions`, `PoolStats`, `LogLevel`, ...). With Wally, `wally-package-types` re-exports them into the link file; before, Wally and pesde users couldn't reach these types at all, because the link file has no submodules to import them from.
+- **Tests:** `Types.spec` annotates values with the root types (checked by luau-lsp in CI) and checks that requiring the root module still loads no submodule.
+
+### Changed
+- **Template and demo** use the root types (`Constella.Context`) directly. The template's `Shared/Types` module is gone.
+
 ## 0.3.5 — 2026-11-17
 
 A starter template, a typed demo and a Game layout guide. The library code is identical to 0.3.4 apart from the version number.

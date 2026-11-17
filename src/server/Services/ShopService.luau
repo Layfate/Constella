@@ -6,8 +6,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Packages = ReplicatedStorage:WaitForChild("Packages")
 local Constella = require(Packages:WaitForChild("Constella"))
--- Required directly only for its exported types; Constella loads the same module.
-local Core = require(Packages.Constella.Core)
 local Network = Constella.Network
 local Check = Network.Check
 
@@ -25,7 +23,7 @@ local ShopService = {
 	Dependencies = { "RewardService" },
 }
 
-function ShopService.Init(_self: typeof(ShopService), context: Core.Context)
+function ShopService.Init(_self: typeof(ShopService), context: Constella.Context)
 	local rewards: RewardService = context:Get("RewardService")
 	local logger = Constella.Debug.Logger.new("ShopService")
 

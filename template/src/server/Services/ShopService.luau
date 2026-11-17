@@ -8,7 +8,6 @@ local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChil
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Items = require(Shared:WaitForChild("Items"))
 local Net = require(Shared:WaitForChild("Net"))
-local Types = require(Shared:WaitForChild("Types"))
 
 local Check = Constella.Network.Check
 
@@ -23,7 +22,7 @@ local ShopService = {
 
 export type ShopService = typeof(ShopService)
 
-function ShopService.Init(_self: ShopService, context: Types.Context)
+function ShopService.Init(_self: ShopService, context: Constella.Context)
 	local coins: CoinsService = context:Get("CoinsService")
 	local logger = Constella.Debug.Logger.new("ShopService")
 

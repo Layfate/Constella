@@ -6,10 +6,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Packages = ReplicatedStorage:WaitForChild("Packages")
 local Constella = require(Packages:WaitForChild("Constella"))
--- Required directly only for their exported types; Constella loads the same modules.
-local Cleanup = require(Packages.Constella.Cleanup)
-local Core = require(Packages.Constella.Core)
-local State = require(Packages.Constella.State)
 
 -- A type-only import: nothing is required at runtime. The instance itself
 -- comes from context:Get, so the App still controls the startup order.
@@ -26,13 +22,13 @@ local RewardService = {
 	Environment = "Server",
 	Dependencies = { "PlayerDataService" },
 
-	_coins = {} :: { [Player]: State.Value<number> },
-	_sessions = {} :: { [Player]: Cleanup.Cleanup },
+	_coins = {} :: { [Player]: Constella.Value<number> },
+	_sessions = {} :: { [Player]: Constella.Cleanup },
 }
 
 export type RewardService = typeof(RewardService)
 
-function RewardService.Init(self: RewardService, context: Core.Context)
+function RewardService.Init(self: RewardService, context: Constella.Context)
 	local playerData: PlayerDataService = context:Get("PlayerDataService")
 	local store = playerData.Store
 	local replicator = context.Cleanup:Add(Constella.Replication.Server.new("Player"))
@@ -43,7 +39,7 @@ function RewardService.Init(self: RewardService, context: Core.Context)
 		local session = Constella.Cleanup.new()
 		self._sessions[player] = session
 
-		local coins: State.Value<number> = session:Add(Constella.State.new(profile.Data.Coins))
+		local coins: Constella.Value<number> = session:Add(Constella.State.new(profile.Data.Coins))
 		self._coins[player] = coins
 		session:Add(function()
 			self._coins[player] = nil

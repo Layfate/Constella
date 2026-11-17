@@ -4,7 +4,7 @@ A small working game laid out the way [Game layout](https://github.com/Layfate/C
 
 ```
 src/
-├── shared/    → ReplicatedStorage.Shared       Types, Items, Net
+├── shared/    → ReplicatedStorage.Shared       Items, Net
 ├── server/    → ServerScriptService.Server      Main.server + Services/
 ├── storage/   → ServerStorage                   Config/ (server-only)
 └── client/    → StarterPlayerScripts.Client     Main.client + Controllers/
@@ -17,7 +17,7 @@ Packages/      → ReplicatedStorage.Packages       Constella goes here
 2. Put Constella in `Packages/`. The simplest way is to download `Constella.rbxm` from the [latest release](https://github.com/Layfate/Constella/releases/latest) into `Packages/`. Rojo syncs `.rbxm` files as-is.
 3. Run `rojo serve` (or `rojo build -o Game.rbxl`) and press Play.
 
-With Wally or pesde, `Packages.Constella` is a link file with no children. Point the requires in `src/shared/Types.luau` at the real package folder; that's the only file that needs it.
+With Wally, add `Constella = "layfate/constella@0.3.6"` to a `wally.toml` and run `wally install` instead. Run [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) afterwards so type annotations like `Constella.Context` resolve.
 
 ## Before you publish
 
