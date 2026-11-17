@@ -5,16 +5,23 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"))
+local Packages = ReplicatedStorage:WaitForChild("Packages")
+local Constella = require(Packages:WaitForChild("Constella"))
+-- Required directly only for their exported types; Constella loads the same modules.
+local Core = require(Packages.Constella.Core)
+local State = require(Packages.Constella.State)
 
 local CoinsController = {
 	Name = "CoinsController",
 	Environment = "Client",
 
-	Coins = nil :: any, -- read-only State<number?>
+	-- Read-only: the server owns the value. Set in Start.
+	Coins = (nil :: any) :: State.Computed<number?>,
 }
 
-function CoinsController.Start(self: any, context: any)
+export type CoinsController = typeof(CoinsController)
+
+function CoinsController.Start(self: CoinsController, context: Core.Context)
 	local replica = context.Cleanup:Add(Constella.Replication.Client.new("Player"))
 	self.Coins = replica:Get("Coins")
 

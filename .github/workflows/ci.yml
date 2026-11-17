@@ -48,11 +48,11 @@ jobs:
 
       - name: Format (StyLua)
         if: always()
-        run: stylua --check src tests examples benchmarks
+        run: stylua --check src tests examples benchmarks template
 
       - name: Lint (selene)
         if: always()
-        run: selene src tests examples benchmarks
+        run: selene src tests examples benchmarks template
 
       - name: Type check (luau-lsp, Roblox types)
         if: always()
@@ -64,6 +64,17 @@ jobs:
             --definitions=@roblox="$RUNNER_TEMP/globalTypes.d.luau" \
             --base-luaurc=.luaurc \
             src tests examples benchmarks
+
+      - name: Type check the starter template (luau-lsp, Roblox types)
+        if: always()
+        run: |
+          rojo sourcemap template.project.json --output "$RUNNER_TEMP/template-sourcemap.json"
+          luau-lsp analyze \
+            --platform=roblox \
+            --sourcemap="$RUNNER_TEMP/template-sourcemap.json" \
+            --definitions=@roblox="$RUNNER_TEMP/globalTypes.d.luau" \
+            --base-luaurc=.luaurc \
+            template
 
   packages:
     name: Wally and pesde packages

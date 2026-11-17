@@ -4,14 +4,17 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"))
+local Packages = ReplicatedStorage:WaitForChild("Packages")
+local Constella = require(Packages:WaitForChild("Constella"))
+-- Required directly only for its exported types; Constella loads the same module.
+local Core = require(Packages.Constella.Core)
 
 local ShopController = {
 	Name = "ShopController",
 	Environment = "Client",
 }
 
-function ShopController.Start(_self: any, _context: any)
+function ShopController.Start(_self: typeof(ShopController), _context: Core.Context)
 	local shop = Constella.Network.Client.new("Shop")
 	local purchase = shop:Function("Purchase", { Timeout = 5 })
 
