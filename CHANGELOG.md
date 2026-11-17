@@ -2,6 +2,19 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
+## 0.3.7 — 2026-11-17
+
+Measurements with real clients and engine-measured traffic, a soak harness, and a smaller Signal connection. No public API changed.
+
+### Changed
+- **Signal:** connections form a circular list with the signal as its sentinel, so a connection no longer stores a reference to its signal and `Connect`/`Disconnect` don't branch on head or tail. 144 bytes per connection instead of 160, and `Connect`+`Disconnect` 7% faster [95% CI −16, −2]; `Fire` with one listener is 4% slower [+3, +6] (about 0.02 µs), and unchanged with 10 or more. Measured A/B against 0.3.6 in one Studio session, 15 runs. Ordering, snapshot `Fire`, error isolation and retention behaviour are unchanged.
+
+### Added
+- **Load and soak tests with real clients** (`tests/load/`, `load.project.json`, `.github/scripts/studio_load.ps1`): one server and N real Studio client processes connected through Roblox's network replicator. Traffic comes from the engine's own counters, not estimates. The soak runs the full game tick plus object churn for as long as you set, with a control run that does no Constella work; no multi-hour soak result is published yet. See [Benchmarks](https://github.com/Layfate/Constella/blob/main/docs/Benchmarks.md#real-clients). Measured with 1–8 real clients: a one-field change to a 40-item inventory costs 130 bytes on the wire with Delta against 1,184 for the full value (89% less; the estimate had said 95%), and with real sends Delta also takes less server time than a full send. Every replica matched the server exactly, and the server accepted and rejected exactly the requests clients sent.
+- **Reproduction kit:** `.github/scripts/reproduce.ps1` runs the benchmarks, the load test and optionally a soak on your machine and writes one report; a "Benchmark result" issue template collects outside results. The comparison libraries are pinned in `.github/bench-libs.json`, shared by CI and local runs (`fetch_bench_libs.py`).
+- **Benchmarks:** `RunBenchmarks({ Groups = { ... } })` runs only some groups, and the report has a behaviour check: what each signal does after user code cancels one of its idle threads.
+- **Tests:** six Signal tests for the connection list (first, middle and last removed; a listener connected after the last one is removed mid-`Fire`; `DisconnectAll` inside a listener; `Once` among others; a cancelled idle runner).
+
 ## 0.3.6 — 2026-11-17
 
 Every public type is now exported from the root module. No runtime behaviour changed.

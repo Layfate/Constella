@@ -21,6 +21,7 @@ template/               starter game showing the recommended layout (see docs/Ga
 examples/               one zero-setup script per module
 tests/server/           unit tests (TestKit + *.spec modules) and the server halves of integration tests
 tests/client/           client halves of the Network and Replication integration tests
+tests/load/             load and soak tests with real Studio clients (load.project.json)
 benchmarks/             benchmark suite (see docs/Benchmarks.md)
 docs/                   reference documentation
 assets/                 logo files
@@ -63,6 +64,27 @@ print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)())
 ```
 
 Run this in the Studio command bar (Edit mode). To compare with other libraries, add `Signal` (sleitnick/signal) and `Trove` (sleitnick/trove) ModuleScripts to `ServerStorage.BenchmarkLibs`. If you change a hot path, re-run the benchmarks and update [docs/Benchmarks.md](docs/Benchmarks.md).
+
+Or headless, with the pinned comparison libraries (Windows, Studio installed):
+
+```powershell
+python .github/scripts/fetch_bench_libs.py                     # add --baseline <path to another Constella build> for an A/B
+.github/scripts/studio_bench.ps1 -Runs 9 -Groups Signal        # -Groups is optional; the report goes to build/bench-report.md
+```
+
+### Load and soak tests with real clients
+
+`tests/load/` runs Constella with real Studio client processes connected through Roblox's network replicator, and measures traffic with the engine's own counters:
+
+```powershell
+.github/scripts/studio_load.ps1 -Clients 4                                  # load phases, about 4 minutes
+.github/scripts/studio_load.ps1 -Mode Soak -Clients 4 -Minutes 120          # soak
+.github/scripts/studio_load.ps1 -Mode Soak -Clients 4 -Minutes 60 -NoWorkload  # its control run
+python .github/scripts/load_report.py build/load-load-1.json build/load-load-4.json
+python .github/scripts/load_report.py --soak build/load-soak-4.json
+```
+
+Each client is a separate Studio process (about 1.7 GB), and only one multiplayer test session can run at a time. [docs/Benchmarks.md](docs/Benchmarks.md#real-clients) explains what is measured. `.github/scripts/reproduce.ps1` runs the benchmarks, the load test and optionally a soak in one go and writes a report.
 
 ## Lint, format and type check
 

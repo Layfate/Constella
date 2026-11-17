@@ -6,6 +6,8 @@
 	```lua
 	print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)())
 	print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)({ Runs = 7 }))
+	-- Only some groups (speed, memory and leak cases alike):
+	print(require(game.ServerScriptService.ConstellaBenchmarks.RunBenchmarks)({ Groups = { "Signal" } }))
 	```
 
 	Optional comparisons: put these ModuleScripts in ServerStorage.BenchmarkLibs
@@ -78,8 +80,27 @@ end
 
 local REGRESSION_RATIO, REGRESSION_LOWER = 1.10, 1.05
 
-return function(options: { Runs: number?, Packages: { Package }? }?): string
+-- Memory cases by group, for the Groups option.
+local MEMORY_GROUPS = {
+	["Connected listener"] = "Signal",
+	["Tracked function"] = "Cleanup",
+	["Resolved promise"] = "Promise",
+	["Pending promise from Then"] = "Promise",
+}
+
+return function(options: { Runs: number?, Packages: { Package }?, Groups: { string }? }?): string
 	local runs = (options and options.Runs) or 5
+	-- nil runs every group.
+	local groups: { [string]: boolean }? = nil
+	if options and options.Groups then
+		groups = {}
+		for _, group in options.Groups do
+			(groups :: any)[group] = true
+		end
+	end
+	local function wants(group: string): boolean
+		return groups == nil or groups[group] == true
+	end
 	local packages: { Package } = (options and options.Packages)
 		or { { Module = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella") } }
 	local libs = ServerStorage:FindFirstChild("BenchmarkLibs")
@@ -97,6 +118,9 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	local cases: { any } = {}
 	local currentBuild: number? = nil
 	local function case(group, name, implementation, iterations, run)
+		if not wants(group) then
+			return
+		end
 		table.insert(cases, {
 			group = group,
 			name = name,
@@ -638,6 +662,9 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	local COUNT = 5000
 	local memory = {}
 	local function memoryCase(name, implementation, build, count, trials)
+		if not wants(MEMORY_GROUPS[name] or name) then
+			return
+		end
 		local objects = count or COUNT
 		table.insert(memory, { name, implementation, Bench.bytesPerObject(build, objects, trials), objects })
 	end
@@ -745,7 +772,7 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	-- Bandwidth: what one update of a 40-item inventory sends. ---------------
 	local bandwidth = {}
 	local measureLimits = { MaxBytes = math.huge, MaxDepth = 64, MaxNodes = math.huge }
-	for _, build in builds do
+	for _, build in (if wants("Replication") then builds else {}) :: any do
 		local Constella, suffix = build.Constella, build.suffix
 		for _, delta in { false, true } do
 			local replicator = Constella.Replication.Server.new("BenchBandwidth", {
@@ -777,11 +804,50 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 		end
 	end
 
+	-- Behaviour checks: guarantees that explain speed differences. -----------
+	-- A listener that cancels its runner thread later (for example by adding
+	-- coroutine.running() to a cleanup) leaves a dead thread where the
+	-- signal expects an idle one. Constella checks for that once per Fire.
+	local behaviour = {}
+	local function cancelledRunner(label, new)
+		local signal = new()
+		local runner
+		signal:Connect(function()
+			runner = coroutine.running()
+		end)
+		signal:Fire()
+		task.cancel(runner)
+		local calls = 0
+		signal:Connect(function()
+			calls += 1
+		end)
+		local ok = pcall(signal.Fire, signal)
+		table.insert(
+			behaviour,
+			{ label, if ok and calls == 1 then "keeps working" else "Fire raises an error, listeners don't run" }
+		)
+	end
+	if wants("Signal") then
+		for _, build in builds do
+			cancelledRunner("Constella.Signal" .. build.suffix, build.Constella.Signal.new)
+		end
+		if OtherSignal then
+			cancelledRunner("sleitnick/signal", OtherSignal.new)
+		end
+		if LemonSignal then
+			cancelledRunner("LemonSignal", LemonSignal.new)
+		end
+	end
+
 	-- Leak checks: the owner stays alive; released objects must be freed. ------
 	local LEAK_COUNT = 2000
 	local leaks = {}
 	local owners = {}
 	local function leakCase(name, build)
+		-- Leak names start with their group ("Signal: ...").
+		if not wants((string.match(name, "^(%a+):") or name) :: string) then
+			return
+		end
 		local remaining, seconds = Bench.leakCheck(build, 15)
 		table.insert(leaks, { name, LEAK_COUNT, remaining, seconds })
 	end
@@ -1006,6 +1072,14 @@ return function(options: { Runs: number?, Packages: { Package }? }?): string
 	table.insert(lines, "| --- | ---: |")
 	for _, row in bandwidth do
 		table.insert(lines, ("| %s | %d |"):format(row[1], row[2]))
+	end
+	if #behaviour > 0 then
+		table.insert(lines, "")
+		table.insert(lines, "| Signal: after user code cancels an idle runner thread | Result |")
+		table.insert(lines, "| --- | --- |")
+		for _, row in behaviour do
+			table.insert(lines, ("| %s | %s |"):format(row[1], row[2]))
+		end
 	end
 	table.insert(lines, "")
 	table.insert(lines, "| Leak check | Released | Still alive | Seconds |")

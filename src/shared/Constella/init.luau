@@ -12,7 +12,7 @@
 	`Constella.Store<T>`, ...); see the end of this file.
 ]=]
 
-local VERSION = "0.3.6"
+local VERSION = "0.3.7"
 local AUTHOR = "Zense"
 
 -- Modules shipped in this version (key -> child ModuleScript name).

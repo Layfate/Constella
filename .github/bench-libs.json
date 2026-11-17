@@ -1,0 +1,59 @@
+{
+	"_comment": "Comparison libraries for the benchmarks, pinned by commit and SHA-256. Used by CI (ci.yml) and by .github/scripts/fetch_bench_libs.py. Third-party code: downloaded, never committed.",
+	"libs": [
+		{
+			"name": "Signal",
+			"label": "sleitnick/signal 2.0.3",
+			"repo": "Sleitnick/RbxUtil",
+			"commit": "31f9120fca021e3dec275b42bc7047d626962082",
+			"path": "modules/signal/init.luau",
+			"file": "signal.luau",
+			"sha256": "a2c3a044ad291f1b8ea7d9ab38147d0ca8807c22532a45f31f33c79b89b74124"
+		},
+		{
+			"name": "Trove",
+			"label": "sleitnick/trove 1.8.0",
+			"repo": "Sleitnick/RbxUtil",
+			"commit": "31f9120fca021e3dec275b42bc7047d626962082",
+			"path": "modules/trove/init.luau",
+			"file": "trove.luau",
+			"sha256": "6037d12780509f4d7b6119c437b29918f230c2b90344247d591c58179ecef4b1"
+		},
+		{
+			"name": "LemonSignal",
+			"label": "LemonSignal 2.0.0",
+			"repo": "Data-Oriented-House/LemonSignal",
+			"commit": "540ce9dc5fdce5cb275a7c69c66669706d9c9bd2",
+			"path": "src/LemonSignal.lua",
+			"file": "lemonsignal.lua",
+			"sha256": "944fdda27e5e97bd2c44f3a4d7850d1838fba461391fb8a79b0ebffa04933ef2"
+		},
+		{
+			"name": "Janitor",
+			"label": "Janitor 1.17.0",
+			"repo": "howmanysmall/Janitor",
+			"commit": "af930bf8939b7758b23bf62fb651ab5f348cdc52",
+			"path": "src/init.luau",
+			"file": "janitor/init.luau",
+			"sha256": "5487974b6785b25f15cadb11d0e471543e37059b7ea51975dcaae40f9a30bd91"
+		},
+		{
+			"name": "Janitor/Promise",
+			"label": "Janitor 1.17.0 (its Promise dependency)",
+			"repo": "howmanysmall/Janitor",
+			"commit": "af930bf8939b7758b23bf62fb651ab5f348cdc52",
+			"path": "src/Promise.luau",
+			"file": "janitor/Promise.luau",
+			"sha256": "218c40224809611b05a587d76b134a9707f37b83c18be158fe557cee1ff07be5"
+		},
+		{
+			"name": "Promise",
+			"label": "evaera/roblox-lua-promise 4.0.0",
+			"repo": "evaera/roblox-lua-promise",
+			"commit": "2c6f433903275e689ba1d48402d4a9d6fdc605a5",
+			"path": "lib/init.lua",
+			"file": "promise.lua",
+			"sha256": "5d69cf99a9741048855decb1d8cb5d7668f362f40c769d1500ce8f9c20dd319f"
+		}
+	]
+}

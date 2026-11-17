@@ -25,3 +25,4 @@ __pycache__/
 
 # Template sourcemap (CONTRIBUTING.md)
 template-sourcemap.json
+bench.generated.project.json

@@ -1,6 +1,6 @@
 # Constella documentation
 
-Reference pages for every module in Constella v0.3.6.
+Reference pages for every module in Constella v0.3.7.
 
 ## Architecture
 
@@ -46,6 +46,6 @@ Reference pages for every module in Constella v0.3.6.
 - **State dependencies are explicit.** Use `State.computed({ a, b }, fn)`; there's no automatic tracking. Compute functions and batches must not yield.
 - **Network payload sizes are estimates,** not Roblox's exact wire sizes. Validation checks the shape of a request; your handlers still decide what's allowed in the game.
 - **Zone checks points, not volumes.** Each zone has its own Heartbeat connection.
-- **Multi-player scenarios** (rejoins, many clients) are tested with stand-in players in unit tests, not with real clients.
+- **Real clients are tested up to 8 at once,** in Studio on one machine: load phases with engine-measured traffic ([Benchmarks](Benchmarks.md#real-clients)). A soak harness for multi-hour runs is included, but no multi-hour result is published yet. 50 real clients, rejoins and live-game network conditions (latency, packet loss) have not been measured; larger player counts are tested with stand-in players.
 - **The Promise unhandled-rejection reporter applies to every promise** (`Promise.setUnhandledRejectionHandler`).
-- **Performance is measured, not assumed.** [Benchmarks](Benchmarks.md) cover every module plus a 50-player server tick, against sleitnick/signal, LemonSignal, Trove, Janitor, evaera's Promise and hand-written baselines. Every pull request reruns them on a Roblox server against the code it changes and fails if a case gets measurably slower. Where Constella loses (Signal `Connect`+`Disconnect`, Delta's extra CPU), the numbers say so. No comparisons have been made with Knit, Fusion or other frameworks.
+- **Performance is measured, not assumed.** [Benchmarks](Benchmarks.md) cover every module plus a 50-player server tick, against sleitnick/signal, LemonSignal, Trove, Janitor, evaera's Promise and hand-written baselines. Every pull request reruns them on a Roblox server against the code it changes and fails if a case gets measurably slower. Where Constella loses (Signal against sleitnick/signal, Replication's extra CPU over a plain RemoteEvent), the numbers say so. All results so far come from Constella's author; [reproducing them](Benchmarks.md#independent-verification) takes one command. No comparisons have been made with Knit, Fusion or other frameworks.
