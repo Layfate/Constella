@@ -4,7 +4,7 @@ return function(t, Constella)
 	local expect = t.expect
 
 	t.it("exposes the version and author", function()
-		expect(Constella.Version).toBe("0.3.5")
+		expect(Constella.Version).toBe("0.3.6")
 		expect(Constella.Author).toBe("Zense")
 	end)
 

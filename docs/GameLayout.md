@@ -9,7 +9,6 @@ ReplicatedStorage
 ├── Packages
 │   └── Constella             the library
 └── Shared                    seen by the server AND every client
-    ├── Types                 every Constella type the game uses, imported once
     ├── Items                 public data both sides read (catalog, prices)
     └── Net                   remote and replication names
 
@@ -66,7 +65,7 @@ local ShopService = {
 	Dependencies = { "CoinsService" },
 }
 
-function ShopService.Init(self: typeof(ShopService), context: Types.Context)
+function ShopService.Init(self: typeof(ShopService), context: Constella.Context)
 	local coins: CoinsService = context:Get("CoinsService")
 end
 ```
@@ -75,9 +74,19 @@ end
 
 ## Types
 
-Exported types can only be read from a module that is `require`d directly, so the template imports them in one place, `Shared/Types`, and every other module uses `Types.Context`, `Types.Store<T>` and so on. If the way Constella is installed changes, only that file changes.
+Every public type is exported from the root module, so the `Constella` you already required is all you need:
 
-`Shared/Types` requires Constella's submodules by path (`Packages.Constella.Core`). That works with the [release download](https://github.com/Layfate/Constella#installation) and the source build. Wally and pesde install a link file at `Packages.Constella` with no children, so with those `Shared/Types` needs to point at the real package folder instead.
+```lua
+local Constella = require(ReplicatedStorage.Packages.Constella)
+
+local coins: Constella.Value<number> = Constella.State.new(0)
+local store: Constella.Store<PlayerData> = Constella.Data.Store.new({ ... })
+function MyService.Init(self: MyService, context: Constella.Context) end
+```
+
+The names match the modules' own (`Context`, `Store<T>`, `Value<T>`, `Logger`), with a module prefix where two would clash (`NetworkServer` and `ReplicationServer`, `ComponentOptions`, `PoolStats`). The full list is at the end of `init.luau`. The types cost nothing at runtime: requiring Constella still loads only the modules you use.
+
+With Wally, run [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) after `wally install` so the link file re-exports them (see [Installation](https://github.com/Layfate/Constella#installation)). The release download and the source build need nothing extra.
 
 Keep listener types by connecting through the signal: `context.Cleanup:Add(store.Loaded:Connect(function(player, profile) ... end))`. `Cleanup:Connect(signal, fn)` accepts any signal, so its callback is untyped.
 

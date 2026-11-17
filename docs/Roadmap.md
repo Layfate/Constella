@@ -61,12 +61,14 @@ Still verification work. No new modules.
 - **Template:** ✅ a starter game with the recommended layout across ReplicatedStorage, ServerScriptService, ServerStorage and StarterPlayerScripts, checked in CI and in a Studio playtest with a hostile client. See [Game layout](GameLayout.md).
 - **Demo:** ✅ typed with Constella's exported types instead of `any`.
 
+## v0.3.6 — every public type from the root module · released 2026-11-17
+
+- **Types:** ✅ all 71 public types are exported from the root module (`Constella.Context`, `Constella.Store<T>`, ...), so Wally and pesde users can use them. Lazy loading is unchanged and tested.
+
 ## Next
 
 - **Pool:** measure memory over long sessions.
 - **Replication Delta:** run the Play-mode test (`tests/client/ReplicationIntegration.client.luau`) in Studio with real clients.
-
-- **Types for Wally and pesde users:** re-export the public types (`Context`, `Store<T>`, `Value<T>` and so on) from the root module. With those installs `Packages.Constella` is a link file, so submodule types can't be imported by path.
 - **Typed listeners and profile keys:** `Cleanup:Connect` types its callback as `(...any)`, and `profile:Set` accepts any key and value.
 
 ## Toward 1.0

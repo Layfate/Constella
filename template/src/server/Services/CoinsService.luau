@@ -9,7 +9,6 @@ local ServerStorage = game:GetService("ServerStorage")
 local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"))
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Net = require(Shared:WaitForChild("Net"))
-local Types = require(Shared:WaitForChild("Types"))
 local Rewards = require(ServerStorage:WaitForChild("Config"):WaitForChild("Rewards"))
 
 -- A type-only import: nothing is required at runtime. The instance comes
@@ -17,9 +16,9 @@ local Rewards = require(ServerStorage:WaitForChild("Config"):WaitForChild("Rewar
 type PlayerDataService = typeof(require(script.Parent.PlayerDataService))
 
 type Session = {
-	Cleanup: Types.Cleanup,
-	Coins: Types.Value<number>,
-	Items: Types.Value<{ [string]: true }>,
+	Cleanup: Constella.Cleanup,
+	Coins: Constella.Value<number>,
+	Items: Constella.Value<{ [string]: true }>,
 }
 
 local WELCOME_REWARD = Constella.Random.lootTable(Rewards.WelcomeReward)
@@ -40,7 +39,7 @@ local function isPositiveInteger(value: unknown): boolean
 	return type(value) == "number" and value == value and value > 0 and value % 1 == 0
 end
 
-function CoinsService.Init(self: CoinsService, context: Types.Context)
+function CoinsService.Init(self: CoinsService, context: Constella.Context)
 	local playerData: PlayerDataService = context:Get("PlayerDataService")
 	local store = playerData.Store
 	local replicator = context.Cleanup:Add(Constella.Replication.Server.new(Net.Player.Namespace))

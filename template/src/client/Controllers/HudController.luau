@@ -9,7 +9,6 @@ local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChil
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Items = require(Shared:WaitForChild("Items"))
 local Net = require(Shared:WaitForChild("Net"))
-local Types = require(Shared:WaitForChild("Types"))
 
 local State = Constella.State
 
@@ -33,7 +32,7 @@ local function makeLabel(parent: Instance, order: number): TextLabel
 	return label
 end
 
-function HudController.Start(_self: HudController, context: Types.Context)
+function HudController.Start(_self: HudController, context: Constella.Context)
 	local playerState: PlayerStateController = context:Get("PlayerStateController")
 	local purchase = context.Cleanup
 		:Add(Constella.Network.Client.new(Net.Shop.Namespace))

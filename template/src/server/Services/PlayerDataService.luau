@@ -11,7 +11,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"))
-local Types = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"))
 
 local Data = Constella.Data
 
@@ -33,12 +32,12 @@ local PlayerDataService = {
 	Environment = "Server",
 
 	-- Created in Init so dependents can connect to Loaded in their own Init.
-	Store = (nil :: any) :: Types.Store<PlayerData>,
+	Store = (nil :: any) :: Constella.Store<PlayerData>,
 }
 
 export type PlayerDataService = typeof(PlayerDataService)
 
-function PlayerDataService.Init(self: PlayerDataService, _context: Types.Context)
+function PlayerDataService.Init(self: PlayerDataService, _context: Constella.Context)
 	self.Store = Data.Store.new({
 		Name = "PlayerData",
 		Version = 1,
@@ -48,12 +47,12 @@ function PlayerDataService.Init(self: PlayerDataService, _context: Types.Context
 	})
 end
 
-function PlayerDataService.Start(self: PlayerDataService, _context: Types.Context)
+function PlayerDataService.Start(self: PlayerDataService, _context: Constella.Context)
 	-- Loads players as they join, releases (and saves) them as they leave.
 	self.Store:BindPlayers()
 end
 
-function PlayerDataService.Stop(self: PlayerDataService, _context: Types.Context)
+function PlayerDataService.Stop(self: PlayerDataService, _context: Constella.Context)
 	-- Stop also runs after a failed startup, when Init may not have finished.
 	if self.Store then
 		self.Store:Shutdown(15)

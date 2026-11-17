@@ -29,7 +29,7 @@
 ```toml
 # wally.toml
 [dependencies]
-Constella = "layfate/constella@0.3.5"
+Constella = "layfate/constella@0.3.6"
 ```
 
 Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
@@ -189,10 +189,10 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 
 ```toml
 [dependencies]
-Constella = "layfate/constella@0.3.5"
+Constella = "layfate/constella@0.3.6"
 ```
 
-Autocomplete works through Wally's `Packages/Constella` link file as installed. To also use Constella's exported type names in your own annotations, re-export them into the link files with [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) after every `wally install`:
+Autocomplete works through Wally's `Packages/Constella` link file as installed. Every public type is exported from the root module (`Constella.Context`, `Constella.Store<T>`, `Constella.Value<T>` and so on). To use those type names in your own annotations, re-export them into the link files with [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) after every `wally install`:
 
 ```bash
 rojo sourcemap default.project.json --output sourcemap.json
