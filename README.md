@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://github.com/Layfate/Constella/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Layfate/Constella/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Layfate/Constella/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7c6cf0"></a>
-  <a href="https://github.com/Layfate/Constella/blob/main/CHANGELOG.md"><img alt="Version 0.3.4" src="https://img.shields.io/badge/version-0.3.4-4fb4f0"></a>
+  <a href="https://github.com/Layfate/Constella/blob/main/CHANGELOG.md"><img alt="Latest release" src="https://img.shields.io/github/v/release/Layfate/Constella?label=version&color=4fb4f0"></a>
   <img alt="Luau: strict" src="https://img.shields.io/badge/luau-strict-5b7cfa">
   <img alt="Platform: Roblox" src="https://img.shields.io/badge/platform-Roblox-3b3f63">
 </p>
