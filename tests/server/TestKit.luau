@@ -185,18 +185,30 @@ function TestKit.run(specs: { Spec }, Constella: any, options: { Silent: boolean
 		--- `build` keeps (an owner that stays alive) must not reference them.
 		function t.leaked(build: () -> ({ any }, (() -> ())?), timeout: number?): number
 			local weak = setmetatable({}, { __mode = "k" })
-			-- Built and released in a call of its own, so no register of this
-			-- frame still points at the objects.
-			local function fill()
-				local objects, release = build()
-				for _, object in objects do
-					weak[object] = true
-				end
-				if release then
-					release()
-				end
+			-- Built and released on a thread that then finishes. While this
+			-- thread waits for the collector, stale slots of its own stack
+			-- (a loop variable holding the last object, say) still count as
+			-- references, so building here could keep one object alive.
+			local done, ok, err = false, true, nil
+			task.spawn(function()
+				ok, err = pcall(function()
+					local objects, release = build()
+					for _, object in objects do
+						weak[object] = true
+					end
+					if release then
+						release()
+					end
+				end)
+				done = true
+			end)
+			local deadline = os.clock() + 10
+			while not done and os.clock() < deadline do
+				task.wait()
 			end
-			fill()
+			if not ok then
+				error(err, 0)
+			end
 			t.collected(weak, timeout)
 			local alive = 0
 			for _ in weak do

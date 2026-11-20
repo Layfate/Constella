@@ -30,7 +30,7 @@ What the new APIs cost (median µs per operation, same run):
 - **`Mutate` costs more than `Set`**, because it compares every top-level key and reports every table-valued one (this profile has one). With `Keys` it compares only the listed keys: 2.2× `Set`, about 0.7 µs more, for type-checked writes. A first version also allocated a closure per call; moving it out cut `Mutate` from 3.69 to 3.38 µs.
 - **`Set` and `Update` stay as fast as before.** A first build called the write check before testing whether `CheckWrites` was on, which measured +4% [+1, +15] on `Update`; testing the flag first brought it back within noise.
 - **`CheckWrites` walks the whole value**, so it's meant for Studio: `CheckWrites = RunService:IsStudio()`.
-- **The Pool leak check used to report 1 object alive** in every build, including 0.3.7. `Bench.leakCheck` built the objects in a `do` block of its own frame, whose registers stay alive while it waits; the loop variable held the last object. It now builds them in a separate call and reports 0, and a Pool unit leak test confirms it.
+- **The Pool leak check used to report 1 object alive** in every build, including 0.3.7. `Bench.leakCheck` built the objects on the thread that then waited for the collector, and stale slots of that thread's stack (the loop variable held the last object) still counted as references. It now builds and releases them on a thread that finishes and reports 0, and a Pool unit leak test confirms it.
 
 These are local Studio numbers: compare rows within this table, not with the Roblox server tables below (that server was about twice as slow).
 
