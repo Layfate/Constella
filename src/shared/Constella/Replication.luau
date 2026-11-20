@@ -49,9 +49,14 @@ local Players = game:GetService("Players")
 local State = require(script.Parent.State)
 local Network = require(script.Parent.Network)
 
+-- Type only: `typeof` in a type annotation isn't evaluated at runtime, so
+-- Replication still doesn't load Debug unless you pass it a logger.
+type Logger = typeof(require(script.Parent.Debug).Logger.new(""))
+
 export type ServerOptions = {
 	Parent: Instance?,
-	Logger: any?,
+	--- A Constella.Debug logger, passed to Network (which logs rejected requests).
+	Logger: Logger?,
 	OnError: ((message: string) -> ())?,
 	--- Largest value that may be sent, in estimated bytes. Defaults to 16384.
 	MaxValueBytes: number?,

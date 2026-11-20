@@ -8,6 +8,9 @@
 				"Constella": {
 					"$path": "src/shared/Constella"
 				}
+			},
+			"ConstellaTestShared": {
+				"$path": "tests/shared"
 			}
 		},
 		"ServerScriptService": {

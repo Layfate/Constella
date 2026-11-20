@@ -64,6 +64,52 @@ Validators are your code too (custom functions, `Check.refine` predicates). If o
 
 Validation only checks that the *shape* of a request is acceptable. Your handler still decides whether it's *allowed* in the game (for example, whether the player can afford the item). Never accept prices, rewards or outcomes from the client.
 
+## Contracts (typed endpoints)
+
+A contract declares one namespace's endpoints in a ModuleScript that both sides require (for example in `ReplicatedStorage.Shared`): each endpoint's name, its argument Schema and, for the type checker, its argument and result types. The server and the client then get **typed** endpoints from it, so a handler, a call and the declaration can't drift apart without a type error.
+
+```lua
+-- ReplicatedStorage.Shared.ShopContract
+local Constella = require(ReplicatedStorage.Packages.Constella)
+local Contract, Check = Constella.Network.Contract, Constella.Network.Check
+
+return Contract.define({
+	Namespace = "Shop",
+	-- client -> server, answered by the server: (itemId) -> (result, balance)
+	Purchase = Contract.fn({ Check.string(20) }) :: Constella.ContractFunction<(string), (string, number)>,
+	-- server -> client only (no Schema)
+	CoinsChanged = Contract.event() :: Constella.ContractEvent<(number)>,
+})
+```
+
+```lua
+-- Server
+local server = Network.Server.new(ShopContract.Namespace)
+local purchase = server:FunctionOf(ShopContract.Purchase, {
+	RateLimit = { Count = 2, Per = 1 },
+	Authorize = function(player, itemId) -- typed: (Player, string)
+		return isUnlocked(player, itemId)
+	end,
+})
+purchase:SetHandler(function(player, itemId) -- itemId: string
+	return "Purchased", 90 -- checked against (string, number)
+end)
+server:EventOf(ShopContract.CoinsChanged):Fire(player, 90) -- Fire(player, "90") is a type error
+
+-- Client
+local shop = Network.Client.new(ShopContract.Namespace)
+local ok, result, balance = shop:FunctionOf(ShopContract.Purchase):Invoke("Sword") -- Invoke(5) is a type error
+shop:EventOf(ShopContract.CoinsChanged):Connect(function(coins) -- coins: number
+end)
+```
+
+- **Nothing changes at runtime.** `EventOf` and `FunctionOf` create (or find) the same endpoint `Event` and `Function` do, behind the same five gates, with the contract's Schema. A request through a contract endpoint costs the same as through a plain one ([Benchmarks](Benchmarks.md)). `Event(name)` and `Function(name)` are unchanged.
+- **Server-only settings stay on the server.** `RateLimit`, `MaxPayloadBytes`, `Authorize` and `Unreliable` go in the server's config. A `Schema` there is an error, because two Schemas could disagree.
+- **Schemas are public.** A contract is shared code, so clients can read its Schemas. A Schema checks the *shape* of a request, which is no secret. A check that depends on server-only knowledge (ownership, prices, cooldowns) belongs in `Authorize` or the handler, never in a contract's `Check.refine`.
+- `Contract.define` names each endpoint after its key, checks the names, and freezes the contract and its Schemas: changing the array you passed has no effect afterwards. `Namespace` is required. An endpoint can be in one contract only, and `EventOf`/`FunctionOf` refuse an endpoint from another namespace or a hand-made table.
+- **Types.** Write them with the root types `Constella.ContractEvent<T...>` and `Constella.ContractFunction<A..., R...>`. Exported types are only reachable through a module bound directly to `require`, so `Constella.Network.Contract.Event` doesn't work as a type. The typed endpoints are `Constella.TypedServerEvent<T...>`, `TypedServerFunction<A..., R...>`, `TypedClientEvent<T...>` and `TypedClientFunction<A..., R...>`.
+- **Limits.** Luau can't check that a Schema matches the declared types: `Contract.fn({ Check.number() }) :: Constella.ContractFunction<(string), ()>` type-checks. Keep each cast next to its Schema. On the client, `Invoke` still returns `(boolean, ...any)`, because on failure the second value is an error code, not the first result.
+
 ## Client vs server API
 
 | | Server (`Network.Server`) | Client (`Network.Client`) |
@@ -75,9 +121,12 @@ Validation only checks that the *shape* of a request is acceptable. Your handler
 | Functions | `server:Function(name, config)` then `fn:SetHandler(handler)` | `client:Function(name, { Timeout?, MaxInFlight? })` |
 | Call | Not available (the server never invokes clients) | `fn:Invoke(...)` returns `(true, ...)` or `(false, code)` |
 | Errors | Handler and validator errors go to `OnError`. Rejections go to `OnReject` and `GetStats` | Codes: `Timeout`, `TooManyRequests`, `RateLimited`, `Rejected`, `Unavailable`, `ServerError`, `NetworkError` |
-| Cleanup | `server:Destroy()` removes the folder and every remote | `client:Destroy()` disconnects handlers |
+| Contracts | `server:EventOf(endpoint, config?)`, `server:FunctionOf(endpoint, config?)` | `client:EventOf(endpoint)`, `client:FunctionOf(endpoint, options?)` |
+| Cleanup | `server:Destroy()` removes the folder and every remote | `event:Destroy()` disconnects that event's handlers; `client:Destroy()` disconnects every handler connected through the client |
 
 `Server.new` raises if it's used on a client, and `Client.new` raises if it's used on the server.
+
+A client event is held by its client only while it has connections, so events that are looked up and dropped, or destroyed, can be collected. Connections the game disconnects itself are dropped from the event as it goes. Before 0.4.0, every `client:Event(name)` call and every connection was kept until `client:Destroy()`, so looking an event up once per respawn grew memory without bound.
 
 `Invoke` never hangs: it returns `(false, "Timeout")` after the timeout (default 10 seconds). Luau can't cancel a timed-out `InvokeServer`, because the engine owns that wait, so its thread stays suspended until the server answers. To keep that bounded, each client function allows at most `MaxInFlight` calls (default 8) to be outstanding, counting timed-out ones that haven't come back yet. Beyond that, `Invoke` returns `(false, "TooManyRequests")` straight away without contacting the server. `fn:GetInFlight()` reports the current count.
 
@@ -122,6 +171,6 @@ Each validator is a function `(value) -> (ok, reason?)`, so you can write your o
 
 ## Testing
 
-`tests/server/Network.spec.luau` feeds stand-in players through the same internal entry points that remotes use. It covers malformed payloads, forged payloads, oversized payloads, rate limits, rejoining, authorization and handler errors.
+`tests/server/Network.spec.luau` feeds stand-in players through the same internal entry points that remotes use. It covers malformed payloads, forged payloads, oversized payloads, rate limits, rejoining, authorization and handler errors. `tests/server/Contract.spec.luau` runs the same gates through contract endpoints and covers the client-event fixes. `tests/types/` checks that misusing a contract (a wrong argument, handler or result type) is a type error.
 
-The Play-mode integration test (`tests/*/NetworkIntegration.*`) acts as a hostile client against real remotes. The server then checks its own accept/reject counts.
+The Play-mode integration test (`tests/*/NetworkIntegration.*`) acts as a hostile client against real remotes, including contract endpoints declared in `tests/shared/IntegrationContract.luau`. The server then checks its own accept/reject counts.

@@ -110,12 +110,26 @@ end
 
 function Bench.leakCheck(build: () -> ({ any }, () -> ()), timeoutSeconds: number?): (number, number)
 	local tracked: { [any]: true } = setmetatable({} :: any, { __mode = "k" })
-	do
-		local objects, release = build()
-		for _, object in objects do
-			tracked[object] = true
-		end
-		release()
+	-- Built and released on a thread that then finishes. While this thread
+	-- waits for the collector, stale slots of its own stack (the loop
+	-- variable holds the last object) still count as references, so building
+	-- here could keep one object alive.
+	local done, ok, err = false, true, nil
+	task.spawn(function()
+		ok, err = pcall(function()
+			local objects, release = build()
+			for _, object in objects do
+				tracked[object] = true
+			end
+			release()
+		end)
+		done = true
+	end)
+	while not done do
+		task.wait()
+	end
+	if not ok then
+		error(err, 0)
 	end
 
 	local function alive(): number

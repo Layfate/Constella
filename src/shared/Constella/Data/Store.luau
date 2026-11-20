@@ -40,10 +40,13 @@ local Util = require(script.Parent.Util)
 type Logger = typeof(require(script.Parent.Parent.Debug).Logger.new(""))
 
 --- What a Data backend provides. `Data.ProfileStoreAdapter` and
---- `Data.MemoryAdapter` both implement it.
-export type Adapter = {
-	Open: (self: Adapter, name: string, template: { [any]: any }) -> any,
-}
+--- `Data.MemoryAdapter` both implement it; so can your own backend.
+export type Adapter = Util.Adapter
+--- One named store on a backend (what `Adapter:Open` returns).
+export type Backend = Util.Backend
+--- One player's stored data while this server holds it.
+export type Session = Util.Session
+export type SessionOptions = Util.SessionOptions
 
 export type ErrorKind =
 	"LoadFailed"
@@ -85,6 +88,23 @@ export type Config<T = { [string]: any }> = {
 	--- A Constella.Debug logger for load, release and error events.
 	Logger: Logger?,
 	OnError: ((message: string) -> ())?,
+	--- Checks the data after migration and reconciliation, for example a
+	--- Network.Check validator such as `Check.record({...})`. Returning
+	--- false fails the load as CorruptData: the stored data is not changed
+	--- and the player is kicked (with KickOnFailure).
+	Validate: ((data: any) -> (boolean, string?))?,
+	--- Check that every value written through Set, Update and Mutate can be
+	--- saved to a DataStore, and raise at the write instead of failing at
+	--- the next save. Off by default; `CheckWrites = RunService:IsStudio()`
+	--- catches mistakes while testing at no cost in live servers.
+	CheckWrites: boolean?,
+}
+
+--- Options for `profile:Mutate`.
+export type MutateOptions = {
+	--- Only these top-level keys are compared (and reported through
+	--- Changed). Faster on large profiles; edits to other keys go unreported.
+	Keys: { string }?,
 }
 
 --- A loaded player's data. `Data` has the type of the store's `Template`.
@@ -97,6 +117,11 @@ export type Profile<T = { [string]: any }> = {
 	Get: (self: Profile<T>, key: string) -> any,
 	Set: (self: Profile<T>, key: string, value: any) -> (),
 	Update: (self: Profile<T>, key: string, updater: (current: any) -> any) -> (),
+	--- Edits `Data` through a callback that receives it with its real type,
+	--- then fires Changed for each top-level key that changed. A key holding
+	--- a table counts as changed whenever it is compared (as with Update),
+	--- so in-place edits are never missed.
+	Mutate: (self: Profile<T>, mutator: (data: T) -> (), options: MutateOptions?) -> (),
 	Save: (self: Profile<T>) -> boolean,
 	IsActive: (self: Profile<T>) -> boolean,
 	Release: (self: Profile<T>) -> (),
@@ -136,6 +161,10 @@ ErrorClass.__tostring = function(self: any): string
 	return ("%s%s: %s"):format(PREFIX, self.Kind, self.Message)
 end
 
+local function traceback(err: any): string
+	return debug.traceback(tostring(err), 2)
+end
+
 local function dataError(kind: ErrorKind, message: string): DataError
 	return (setmetatable({ Kind = kind, Message = message }, ErrorClass) :: any) :: DataError
 end
@@ -159,11 +188,25 @@ function ProfileClass.Get(self: any, key: string): any
 	return self.Data[key]
 end
 
+-- Raises at the write if the value can't be saved. Callers check
+-- `_checkWrites` first, so the default (off) costs one field read.
+local function checkWrite(self: any, key: any, value: any, level: number)
+	local problem = if type(key) ~= "string"
+		then ("profile keys must be strings, got %s"):format(typeof(key))
+		else Util.checkStorable(value, key)
+	if problem then
+		error(PREFIX .. ("Can't write to %s: %s"):format(tostring(self.Key), problem), level + 1)
+	end
+end
+
 function ProfileClass.Set(self: any, key: string, value: any)
 	checkActive(self, 3)
 	local old = self.Data[key]
 	if old == value then
 		return
+	end
+	if self._store._checkWrites then
+		checkWrite(self, key, value, 2)
 	end
 	self.Data[key] = value
 	self.Changed:Fire(key, value, old)
@@ -184,8 +227,113 @@ function ProfileClass.Update(self: any, key: string, updater: (any) -> any)
 	if new == old and type(new) ~= "table" then
 		return
 	end
+	if self._store._checkWrites then
+		checkWrite(self, key, new, 2)
+	end
 	self.Data[key] = new
 	self.Changed:Fire(key, new, old)
+end
+
+local function checkKeys(keys: any): boolean
+	if type(keys) ~= "table" then
+		return false
+	end
+	local count = 0
+	for _, key in keys do
+		count += 1
+		if type(key) ~= "string" then
+			return false
+		end
+	end
+	return count == #keys
+end
+
+-- Queues Changed for one compared key, when its value differs or when it
+-- holds a table that may have been edited in place. `changes` holds
+-- (key, new, old) triples; new or old can be nil, so they're stored by
+-- index (table.insert would skip a nil). Returns the new count.
+local function report(key: any, new: any, old: any, changes: { any }, count: number): number
+	if new ~= old or type(new) == "table" then
+		changes[count + 1] = key
+		changes[count + 2] = new
+		changes[count + 3] = old
+		return count + 3
+	end
+	return count
+end
+
+--- Edits Data through `mutator(data)`, which receives Data with its real
+--- type, then fires Changed(key, new, old) for each top-level key that
+--- changed: values that differ, keys that were added or removed, and every
+--- compared key that holds a table (it may have been edited in place).
+--- With `options.Keys`, only those keys are compared. If the mutator
+--- raises, the changes it made are still reported, then the error is
+--- re-raised. Don't yield in the mutator.
+function ProfileClass.Mutate(self: any, mutator: (data: any) -> (), options: MutateOptions?)
+	checkActive(self, 3)
+	if type(mutator) ~= "function" then
+		error(PREFIX .. "Mutate expects a function", 2)
+	end
+	local keys = if options ~= nil then options.Keys else nil
+	if keys ~= nil and not checkKeys(keys) then
+		error(PREFIX .. "Mutate Keys must be an array of strings", 2)
+	end
+	local data = self.Data
+	-- One shallow copy (or one value per listed key) to compare against.
+	local before: { [any]: any }
+	if keys then
+		before = table.create(#keys)
+		for index, key in keys do
+			before[index] = data[key]
+		end
+	else
+		before = table.clone(data)
+	end
+
+	local ok, err = xpcall(mutator :: any, traceback, data)
+	-- The mutator is user code and may have yielded past a session loss.
+	checkActive(self, 3)
+
+	local changes = {}
+	local count = 0
+	if keys then
+		for index, key in keys do
+			count = report(key, data[key], before[index], changes, count)
+		end
+	else
+		for key, value in data do
+			count = report(key, value, before[key], changes, count)
+		end
+		for key, old in before do
+			if data[key] == nil then
+				count = report(key, nil, old, changes, count)
+			end
+		end
+	end
+	-- The edits are already made in place, so listeners hear about them
+	-- even when they can't be saved; the problem is raised afterwards.
+	local problem: string? = nil
+	if self._store._checkWrites then
+		for index = 1, count, 3 do
+			local key = changes[index]
+			problem = if type(key) ~= "string"
+				then ("profile keys must be strings, got %s"):format(typeof(key))
+				else Util.checkStorable(changes[index + 1], key)
+			if problem then
+				break
+			end
+		end
+	end
+	local changed = self.Changed
+	for index = 1, count, 3 do
+		changed:Fire(changes[index], changes[index + 1], changes[index + 2])
+	end
+	if not ok then
+		error(err, 0)
+	end
+	if problem then
+		error(PREFIX .. ("Can't write to %s: %s"):format(tostring(self.Key), problem), 2)
+	end
 end
 
 --- Requests a save now. Returns false if the session is gone or the save failed.
@@ -278,8 +426,23 @@ function StoreClass._prepare(self: any, data: any): (any, DataError?)
 		end
 		version += 1
 	end
-	working[VERSION_KEY] = target
 	Util.reconcile(working, self._template)
+	-- Validate sees the game's data only: Constella's version key is added
+	-- afterwards, so validators like Check.record don't have to allow it.
+	working[VERSION_KEY] = nil
+	local validate = self._validate
+	if validate then
+		local ok, valid, reason = xpcall(validate, function(err)
+			return debug.traceback(tostring(err), 2)
+		end, working)
+		if not ok then
+			return nil, dataError("LoadFailed", ("Validate raised an error: %s"):format(tostring(valid)))
+		end
+		if valid ~= true then
+			return nil, dataError("CorruptData", ("data failed Validate: %s"):format(tostring(reason or "invalid")))
+		end
+	end
+	working[VERSION_KEY] = target
 	return working
 end
 
@@ -613,6 +776,12 @@ function Store.new<T>(config: Config<T>): Store<T>
 	if config.Key ~= nil and type(config.Key) ~= "function" then
 		error(PREFIX .. "Config.Key must be a function", 2)
 	end
+	if config.Validate ~= nil and type(config.Validate) ~= "function" then
+		error(PREFIX .. "Config.Validate must be a function", 2)
+	end
+	if config.CheckWrites ~= nil and type(config.CheckWrites) ~= "boolean" then
+		error(PREFIX .. "Config.CheckWrites must be a boolean", 2)
+	end
 
 	-- New profiles start at the current version.
 	local template = Util.deepCopy(config.Template)
@@ -635,6 +804,8 @@ function Store.new<T>(config: Config<T>): Store<T>
 			return "Player_" .. tostring(player.UserId)
 		end,
 		_logger = config.Logger,
+		_validate = config.Validate,
+		_checkWrites = config.CheckWrites == true,
 		_onError = config.OnError or function(message: string)
 			task.spawn(error, message, 0)
 		end,

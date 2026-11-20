@@ -17,7 +17,7 @@ Packages/      → ReplicatedStorage.Packages       Constella goes here
 2. Put Constella in `Packages/`. The simplest way is to download `Constella.rbxm` from the [latest release](https://github.com/Layfate/Constella/releases/latest) into `Packages/`. Rojo syncs `.rbxm` files as-is.
 3. Run `rojo serve` (or `rojo build -o Game.rbxl`) and press Play.
 
-With Wally, add `Constella = "layfate/constella@0.3.7"` to a `wally.toml` and run `wally install` instead. Run [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) afterwards so type annotations like `Constella.Context` resolve.
+With Wally, add `Constella = "layfate/constella@0.4.0"` to a `wally.toml` and run `wally install` instead. Run [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) afterwards so type annotations like `Constella.Context` resolve.
 
 ## Before you publish
 

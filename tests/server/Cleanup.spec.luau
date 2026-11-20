@@ -293,18 +293,7 @@ return function(t, Constella)
 	end)
 
 	-- True once the garbage collector has freed every object in `weak`.
-	-- Roblox cannot force a collection, so this allocates throwaway tables
-	-- to keep the incremental collector running, with a time limit.
-	local function collected(weak, timeout)
-		local deadline = os.clock() + (timeout or 10)
-		while next(weak) ~= nil and os.clock() < deadline do
-			for _ = 1, 20000 do
-				local _ = { 1, 2, 3 }
-			end
-			task.wait()
-		end
-		return next(weak) == nil
-	end
+	local collected = t.collected
 
 	t.describe("memory", function()
 		t.it("frees cleaned resources while the manager stays alive", function()

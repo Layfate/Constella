@@ -183,4 +183,26 @@ return function(t, Constella)
 		expect(stats.Reused > stats.Created * 5).toBe(true)
 		expect(peakActive <= maxActive).toBe(true)
 	end)
+
+	t.it("objects destroyed past MaxIdle are collectable while the pool stays alive", function()
+		local pool = Constella.Pool.new({
+			Create = function()
+				return {}
+			end,
+			MaxIdle = 0,
+		})
+		local alive = t.leaked(function()
+			local objects = {}
+			for _ = 1, 500 do
+				table.insert(objects, pool:Acquire())
+			end
+			return objects, function()
+				for _, object in objects do
+					pool:Release(object)
+				end
+			end
+		end)
+		expect(alive).toBe(0)
+		expect(pool:GetStats().Active).toBe(0)
+	end)
 end

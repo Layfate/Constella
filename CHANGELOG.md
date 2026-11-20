@@ -2,6 +2,43 @@
 
 All notable changes follow [Semantic Versioning](https://semver.org). Until 1.0.0, minor versions (0.x) may contain breaking changes.
 
+## 0.4.0 — 2026-11-20
+
+Typed Network contracts, typed Data writes, two client-side memory leaks fixed, and type tests that fail when a type silently becomes `any`. Every addition is opt-in; existing code runs unchanged. See the [implementation roadmap](https://github.com/Layfate/Constella/blob/main/docs/ImplementationRoadmap.md) for the plan this release follows.
+
+### Added
+- **Network contracts** (`Network.Contract`, `server:EventOf` / `FunctionOf`, `client:EventOf` / `FunctionOf`): declare a namespace's endpoints once in a shared module, with each endpoint's argument Schema and its types (`Constella.ContractEvent<T...>`, `Constella.ContractFunction<A..., R...>`). The server's handler and `Authorize`, its `Fire` calls, and the client's `Fire`, `Invoke` and `Connect` are then type-checked against the same declaration. At runtime a contract endpoint *is* the endpoint `Event`/`Function` creates, behind the same five gates: a request costs the same as through a plain endpoint (measured below). Rate limits, payload limits and `Authorize` stay in the server's config; a `Schema` there is refused. Contracts are frozen, refuse foreign namespaces and hand-made tables, and copy their Schemas so later edits can't change what the server validates. See [Network](https://github.com/Layfate/Constella/blob/main/docs/Network.md#contracts-typed-endpoints).
+- **`profile:Mutate(fn, { Keys? }?)`**: edits `profile.Data` through a function that receives it with its real type, so misspelt fields and wrong value types are type errors. `Changed` fires once per changed top-level key; keys holding tables count as changed whenever compared, so in-place edits are never missed. `Keys` limits the comparison for large profiles. If `fn` raises, its edits are still reported before the error is re-raised.
+- **`Validate`** (Store config): checks the data after migrations and reconciliation, for example with a `Network.Check` validator. A failure ends the load as `CorruptData` on the never-overwrite path: stored data untouched, player kicked. It never sees Constella's version key.
+- **`CheckWrites`** (Store config, off by default): `Set`, `Update` and `Mutate` raise at the write when a value can't be saved to a DataStore (Instances, functions, Roblox types, NaN, mixed or sparse tables, non-string keys, cycles), naming where (`Owned.Swords[2].Damage is a Vector3`), instead of failing at the next save. `CheckWrites = RunService:IsStudio()` catches mistakes while testing at no cost on live servers.
+- **Types:** 13 new root types (84 in all): the contract types above, `ContractConfig<T...>`, `TypedServerEvent<T...>`, `TypedServerFunction<A..., R...>`, `TypedClientEvent<T...>`, `TypedClientFunction<A..., R...>`, `DataBackend`, `DataSession`, `DataSessionOptions`, `MutateOptions`, `MemoryAdapter` and `MemoryAdapterDatabase`. A custom Data backend can now be written against the exported types.
+- **Type tests** (`tests/types/`, `.github/scripts/check_types.py`, run in CI): `pass/` must type-check, and each of the 11 files in `fail/` must produce exactly the error it declares. They caught a contract design that type-checked but inferred nothing (every contract type was silently `any`) before it shipped.
+- **Lazy-loading test** (`Lazy.spec`): every module and every Network and Data part is required from a copy of the package holding only its documented dependencies, so an undeclared `require` fails the suite. It confirms that Contract loads no validators, that Replication's client side loads no Network server code, and that Data never loads Network or Debug.
+- **Tests:** 84 more (387 in all), including contract endpoints through all five gates, a hostile real client calling contract endpoints in the Play-mode integration test (`tests/shared/IntegrationContract.luau`), and leak tests for contract endpoints, client events, released profiles after `Mutate` and Pool. TestKit gains `t.leaked(build)` and `t.fakePlayer()`.
+- **Benchmarks:** a contract endpoint next to the plain one; writing one key of a 20-key profile with `Set`, `Update`, `Mutate` and `Mutate` with `Keys`; `Set` of a 40-item table with and without `CheckWrites`.
+- `.github/scripts/studio_unit.luau`: runs the unit suite headless through Studio's RunScript (see CONTRIBUTING).
+
+### Changed
+- **Template:** the shop is a Network contract in `Shared/Net`, so its server handler and client call are type-checked against each other. The `src/` demo stays on the plain API.
+- **Types:** `Logger` in `Network.Server` and `Replication.Server` options is typed as a Constella.Debug logger (it was `any`), like Data's. `Cleanup:Connect` checks the callback's parameters against the signal's. `ProfileStoreAdapter.new` returns a `DataAdapter` and `MemoryAdapter.new` a `MemoryAdapter` (both were `any`). Code that passed something else type-checked before and is now a type error; at runtime nothing changed.
+- **Docs:** Architecture lists all module-level state (it omitted Signal's and Promise's runner pools, Signal's connection counter and Promise's rejection handler) and no longer says every module is one file; its dependency table now covers each Network and Data part and is enforced by `Lazy.spec`. GameLayout's "share names, not rules" became "share shapes, not rules", for contracts.
+
+### Fixed
+- **Network (client), memory leak:** `client:Event(name)` kept every event object it ever returned until `client:Destroy()`, so looking an event up repeatedly (once per respawn, say) grew without bound. A client now holds an event only while it has connections.
+- **Network (client), memory leak:** an event kept every connection made through it, including ones the game had already disconnected, so connecting and disconnecting the same event repeatedly grew without bound. Disconnected connections are now dropped as new ones are made (amortized O(1) per `Connect`). `client:Destroy()` still disconnects every live connection, including those of an event that was destroyed and connected again.
+- **Network:** `RateLimiter:GetTokens(key)` created a bucket for every unknown key it was asked about. It now returns the full capacity without storing anything.
+- **Benchmarks and tests:** `Bench.leakCheck` built its objects on the thread that then waited for the collector, and stale slots of that thread's stack (the loop variable held the last object) still counted as references, so one object could stay alive: the Pool leak check reported 1 of 2,000 in every build, including 0.3.7. It now builds and releases on a thread that finishes, as `t.leaked` does; a new Pool unit leak test confirms Pool frees every object.
+
+### Performance
+Measured A/B against 0.3.7 in one local Studio session, 9 runs, with 95% bootstrap intervals ([Benchmarks](https://github.com/Layfate/Constella/blob/main/docs/Benchmarks.md#040-against-037)):
+- **No case got slower**, and memory per object is unchanged. Every leak check frees all 2,000 objects.
+- A request through a **contract endpoint** costs the same as through a plain one (1.780 against 1.804 µs).
+- `profile:Mutate` writing one key of a 20-key profile takes 3.38 µs, or 1.23 µs with `Keys` (`Set`: 0.57 µs). `Set` of a 40-item table takes 28.4 µs with `CheckWrites` (1.8 µs without), so it's meant for Studio.
+
+### Upgrade notes
+- No runtime behaviour changed for existing code. The type changes above can turn code that passed a non-Debug logger, or an untyped signal callback with the wrong parameters, into a type error.
+- One ModuleScript is new in the package, `Network/Contract`. If you installed the `.rbxm`, replace the whole Constella folder with the new download.
+
 ## 0.3.7 — 2026-11-17
 
 Measurements with real clients and engine-measured traffic, a soak harness, and a smaller Signal connection. No public API changed.

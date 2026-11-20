@@ -11,6 +11,8 @@ if not RunService:IsStudio() then
 end
 
 local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"))
+local IntegrationContract =
+	require(ReplicatedStorage:WaitForChild("ConstellaTestShared"):WaitForChild("IntegrationContract"))
 local client = Constella.Network.Client.new("ConstellaIntegration")
 
 local failures = {}
@@ -57,6 +59,26 @@ check(badOk == false and badCode == "Rejected", "Add('two', 3) should return fal
 local boomOk, boomCode, leaked = client:Function("Boom", { Timeout = 5 }):Invoke()
 check(boomOk == false and boomCode == "ServerError", "Boom should return false, 'ServerError'")
 check(leaked == nil, "Boom must not leak server error details")
+
+-- Contract endpoints, called through the typed client API. The casts to
+-- `any` are the point: a hostile client ignores the types.
+local order = client:FunctionOf(IntegrationContract.Order, { Timeout = 5 })
+local orderOk, receipt = order:Invoke("Sword", 2)
+check(orderOk == true and receipt == "Sword x2", "Order('Sword', 2) should return true, 'Sword x2'")
+local tooMany, tooManyCode = order:Invoke("Sword", 9)
+check(tooMany == false and tooManyCode == "Rejected", "Order('Sword', 9) should be rejected")
+local forged, forgedCode = (order :: any):Invoke({ Admin = true }, 1)
+check(forged == false and forgedCode == "Rejected", "a forged Order should be rejected")
+local denied, deniedCode = order:Invoke("Forbidden", 1)
+check(denied == false and deniedCode == "Rejected", "Order('Forbidden', 1) should be refused by Authorize")
+
+-- 2 per minute: the oversized one spends a token and fails its Schema, one
+-- goes through, the rest are rate limited.
+local shout = client:EventOf(IntegrationContract.Shout)
+shout:Fire(string.rep("x", 50))
+for _ = 1, 4 do
+	shout:Fire("hi")
+end
 
 local deadline = os.clock() + 5
 while reply == nil and os.clock() < deadline do

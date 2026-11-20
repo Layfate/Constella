@@ -2,6 +2,38 @@
 
 Measurements, including where Constella loses: library benchmarks on a Roblox server (below), [real clients](#real-clients) with engine-measured traffic, a [soak harness](#soak) for multi-hour runs, and a [like-for-like Signal comparison](#signal-against-sleitnicksignal). [Independent verification](#independent-verification) says who produced these and how to reproduce them. The server tables are historical measurements for the commit named below. They predate the 0.3.1 lifecycle fixes and the 0.3.2 and 0.3.3 speedups; see the [changelog](../CHANGELOG.md) for those A/B results. Every pull request reruns the whole suite on a Roblox server against the code it changes, and fails if anything got measurably slower (see [How to run](#how-to-run)), so these numbers are checked continuously rather than once.
 
+## 0.4.0 against 0.3.7
+
+| | |
+| --- | --- |
+| Date | 2026-11-20 |
+| Where | A local Roblox Studio (0.748.0.7481526), headless through `.github/scripts/studio_bench.ps1`, on an AMD Ryzen 7 5700X (8 cores), Windows 11. Edit mode, nothing else running in that Studio. |
+| Code | **This build:** 0.4.0. **Baseline:** the v0.3.7 package (`git archive v0.3.7`). Both were loaded into the same session and measured case by case, alternating. |
+| Method | The whole suite ran **9 times** (each run is the median of 5 trials), with the same 95% bootstrap intervals and regression gate as above. |
+| Tests | 387 of 387 unit tests pass in the same Studio (1 skipped: live DataStores need a published place); the two-client Play-mode integration passes. |
+
+**No case got slower.** Every existing case is within noise of 0.3.7: the largest median changes are within ±12% with intervals that include 0 (Cleanup's runtime code is unchanged; its rows vary most from run to run). Memory per object is identical (Signal 144 bytes, Cleanup 53, promises 322 and 242), and every leak check frees all 2,000 objects in both builds.
+
+What the new APIs cost (median µs per operation, same run):
+
+| Case | Implementation | Median | Compared with |
+| --- | --- | ---: | --- |
+| Network: accept a valid request (all checks) | plain endpoint (`server:Event`) | 1.804 | |
+| | **contract endpoint** (`server:EventOf`) | **1.780** | the same: a contract endpoint is the same object |
+| Data: write one key of a 20-key profile | `profile:Set` | 0.571 | +2% [−0, +4] against 0.3.7 |
+| | `profile:Update` | 0.594 | +1% [−0, +6] against 0.3.7 |
+| | `profile:Mutate` | 3.377 | 5.9× `Set` |
+| | `profile:Mutate` with `Keys = { "Stat1" }` | 1.234 | 2.2× `Set` |
+| Data: set a 40-item inventory table | `profile:Set` | 1.777 | |
+| | `profile:Set` with `CheckWrites` | 28.375 | about 0.65 µs per stored value checked |
+
+- **`Mutate` costs more than `Set`**, because it compares every top-level key and reports every table-valued one (this profile has one). With `Keys` it compares only the listed keys: 2.2× `Set`, about 0.7 µs more, for type-checked writes. A first version also allocated a closure per call; moving it out cut `Mutate` from 3.69 to 3.38 µs.
+- **`Set` and `Update` stay as fast as before.** A first build called the write check before testing whether `CheckWrites` was on, which measured +4% [+1, +15] on `Update`; testing the flag first brought it back within noise.
+- **`CheckWrites` walks the whole value**, so it's meant for Studio: `CheckWrites = RunService:IsStudio()`.
+- **The Pool leak check used to report 1 object alive** in every build, including 0.3.7. `Bench.leakCheck` built the objects on the thread that then waited for the collector, and stale slots of that thread's stack (the loop variable held the last object) still counted as references. It now builds and releases them on a thread that finishes and reports 0, and a Pool unit leak test confirms it.
+
+These are local Studio numbers: compare rows within this table, not with the Roblox server tables below (that server was about twice as slow).
+
 ## Setup
 
 | | |

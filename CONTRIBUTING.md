@@ -22,6 +22,8 @@ examples/               one zero-setup script per module
 tests/server/           unit tests (TestKit + *.spec modules) and the server halves of integration tests
 tests/client/           client halves of the Network and Replication integration tests
 tests/load/             load and soak tests with real Studio clients (load.project.json)
+tests/shared/           modules both integration halves require (the integration Network contract)
+tests/types/            type tests: pass/ must type-check, fail/ must produce the error each file declares
 benchmarks/             benchmark suite (see docs/Benchmarks.md)
 docs/                   reference documentation
 assets/                 logo files
@@ -49,6 +51,13 @@ To run the unit tests without pressing Play, use the Studio command bar:
 
 ```lua
 require(game.ServerScriptService.ConstellaTests.RunTests)()
+```
+
+Or headless, without opening Studio yourself (Windows, Studio installed). This runs the same suite CI runs, in Edit mode:
+
+```powershell
+rojo build ci.project.json -o build/ci.rbxl
+.github/scripts/studio_tests.ps1 -PlacePath build/ci.rbxl -RunnerPath .github/scripts/studio_unit.luau -SuccessMarker CONSTELLA_UNIT_PASS -TimeoutSeconds 600
 ```
 
 A spec is a ModuleScript named `Something.spec` that returns `function(t, Constella)` and uses `t.describe`, `t.it` and `t.expect`. See [tests/server/TestKit.luau](tests/server/TestKit.luau).
@@ -99,7 +108,11 @@ Type checking uses [luau-lsp](https://github.com/JohnnyMorganz/luau-lsp) with Ro
 rojo sourcemap dev.project.json --output sourcemap.json
 luau-lsp analyze --platform=roblox --sourcemap=sourcemap.json \
   --definitions=@roblox=globalTypes.d.luau --base-luaurc=.luaurc \
-  src tests examples benchmarks
+  --ignore="tests/types/fail/**" src tests examples benchmarks
+
+# Type tests that must fail: each file in tests/types/fail must produce the error it declares
+python .github/scripts/check_types.py --luau-lsp luau-lsp --sourcemap sourcemap.json \
+  --definitions globalTypes.d.luau
 
 # The template has its own sourcemap
 rojo sourcemap template.project.json --output template-sourcemap.json
@@ -138,7 +151,7 @@ The `Studio client integration` workflow runs this command on pushes and manual 
 
 ## Releasing
 
-1. Set the new version in `src/shared/Constella/init.luau`, `wally.toml`, `pesde.toml`, the README badge and install lines, `docs/README.md` and `tests/server/Root.spec.luau`.
+1. Set the new version in `src/shared/Constella/init.luau`, `wally.toml`, `pesde.toml`, the README install lines, `template/README.md`, `docs/README.md` and `tests/server/Root.spec.luau`.
 2. Turn the changelog's Unreleased section into the new version, with upgrade notes for any behaviour change.
 3. Run the whole suite in Studio, push, and wait for CI.
 4. Publish a GitHub release with the tag `vX.Y.Z`. The release workflow checks that all three version numbers match the tag, builds `Constella.rbxm` from that tag and attaches it, then publishes to Wally and pesde when the `WALLY_TOKEN` and `PESDE_TOKEN` secrets are set.

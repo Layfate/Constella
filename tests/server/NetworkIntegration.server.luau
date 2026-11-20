@@ -18,6 +18,8 @@ end
 local Constella = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Constella"))
 local Network = Constella.Network
 local Check = Network.Check
+local IntegrationContract =
+	require(ReplicatedStorage:WaitForChild("ConstellaTestShared"):WaitForChild("IntegrationContract"))
 
 -- tallies[player][endpoint] = { Accepted = n, Rejected = { [reason] = n } }
 local tallies = {}
@@ -71,12 +73,30 @@ server:Function("Boom", { Schema = {} }):SetHandler(function(player)
 	error("internal detail that must not reach the client")
 end)
 
+-- Contract endpoints: the Schema comes from the shared contract, the rate
+-- limit and Authorize from here. They must sit behind the same gates.
+server
+	:FunctionOf(IntegrationContract.Order, {
+		Authorize = function(_, item)
+			return item ~= "Forbidden"
+		end,
+	})
+	:SetHandler(function(player, item, quantity)
+		accepted(player, "Order")
+		return ("%s x%d"):format(item, quantity)
+	end)
+server:EventOf(IntegrationContract.Shout, { RateLimit = { Count = 2, Per = 60 } }):Connect(function(player)
+	accepted(player, "Shout")
+end)
+
 local EXPECTED = {
 	Echo = { Accepted = 1, Rejected = { InvalidArguments = 4, PayloadTooLarge = 1 } },
 	ServerOnly = { Accepted = 0, Rejected = { NotAccepted = 1 } },
 	Limited = { Accepted = 3, Rejected = { RateLimited = 7 } },
 	Add = { Accepted = 1, Rejected = { InvalidArguments = 1 } },
 	Boom = { Accepted = 1, Rejected = { HandlerError = 1 } },
+	Order = { Accepted = 1, Rejected = { InvalidArguments = 2, Unauthorized = 1 } },
+	Shout = { Accepted = 1, Rejected = { InvalidArguments = 1, RateLimited = 3 } },
 }
 
 local function compare(player): (boolean, string)
