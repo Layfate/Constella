@@ -21,6 +21,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Contract = require(script.Parent.Contract)
+
 export type ClientOptions = {
 	--- Where to look for the namespace. Defaults to ReplicatedStorage.ConstellaRemotes.
 	Parent: Instance?,
@@ -53,10 +55,35 @@ export type FunctionOptions = {
 	MaxInFlight: number?,
 }
 
+--- A contract event on the client: `ClientEvent` with typed arguments.
+export type TypedClientEvent<T...> = {
+	Name: string,
+	Fire: (self: TypedClientEvent<T...>, T...) -> (),
+	Connect: (self: TypedClientEvent<T...>, handler: (T...) -> ()) -> RBXScriptConnection,
+	Destroy: (self: TypedClientEvent<T...>) -> (),
+}
+
+--- A contract function on the client: `ClientFunction` with typed
+--- arguments. Results stay `...any`: on failure the second value is an
+--- error code, not the first result.
+export type TypedClientFunction<A..., R...> = {
+	Name: string,
+	Invoke: (self: TypedClientFunction<A..., R...>, A...) -> (boolean, ...any),
+	GetInFlight: (self: TypedClientFunction<A..., R...>) -> number,
+}
+
 export type Client = {
 	Namespace: string,
 	Event: (self: Client, name: string) -> ClientEvent,
 	Function: (self: Client, name: string, options: FunctionOptions?) -> ClientFunction,
+	--- The event a contract describes, typed.
+	EventOf: <T...>(self: Client, endpoint: Contract.Event<T...>) -> TypedClientEvent<T...>,
+	--- The function a contract describes, typed.
+	FunctionOf: <A..., R...>(
+		self: Client,
+		endpoint: Contract.Function<A..., R...>,
+		options: FunctionOptions?
+	) -> TypedClientFunction<A..., R...>,
 	Destroy: (self: Client) -> (),
 }
 
@@ -82,13 +109,14 @@ local function resume(thread: thread, ...: any)
 	end
 end
 
-local function waitFor(parent: Instance, name: string, timeout: number, what: string): Instance
+-- `level` is the error level, counted from waitFor.
+local function waitFor(parent: Instance, name: string, timeout: number, what: string, level: number): Instance
 	local child = parent:WaitForChild(name, timeout)
 	if child == nil then
 		error(
 			PREFIX
 				.. ("%s '%s' was not found in %s after %ss"):format(what, name, parent:GetFullName(), tostring(timeout)),
-			3
+			level
 		)
 	end
 	return child :: Instance
@@ -101,20 +129,51 @@ function ClientEventClass.Fire(self: any, ...: any)
 	self._remote:FireServer(...)
 end
 
+-- Drops connections the game already disconnected itself, so an event that
+-- is connected and disconnected over and over (once per round, say) doesn't
+-- keep every old connection. Runs when the list has doubled since the last
+-- pass, so it costs O(1) per Connect on average.
+local function pruneConnections(self: any)
+	local connections = self._connections
+	local kept = 0
+	for index = 1, #connections do
+		local connection = connections[index]
+		if connection.Connected then
+			kept += 1
+			connections[kept] = connection
+		end
+	end
+	for index = #connections, kept + 1, -1 do
+		connections[index] = nil
+	end
+	self._pruneAt = math.max(16, kept * 2)
+end
+
 function ClientEventClass.Connect(self: any, handler: (...any) -> ()): RBXScriptConnection
 	if type(handler) ~= "function" then
 		error(PREFIX .. ("Connect expects a function, got %s"):format(typeof(handler)), 2)
 	end
 	local connection = self._remote.OnClientEvent:Connect(handler)
-	table.insert(self._connections, connection)
+	local connections = self._connections
+	table.insert(connections, connection)
+	if #connections >= self._pruneAt then
+		pruneConnections(self)
+	end
+	-- Registered with the client while it has connections, so
+	-- client:Destroy() disconnects them, even after an earlier Destroy.
+	self._client._events[self] = true
 	return connection
 end
 
+--- Disconnects every handler connected through this event.
 function ClientEventClass.Destroy(self: any)
 	for _, connection in self._connections do
 		connection:Disconnect()
 	end
 	table.clear(self._connections)
+	self._pruneAt = 16
+	-- Nothing left to disconnect, so the client no longer needs to hold it.
+	self._client._events[self] = nil
 end
 
 local ClientFunctionClass = {}
@@ -190,30 +249,86 @@ end
 local ClientClass = {}
 ClientClass.__index = ClientClass
 
-function ClientClass.Event(self: any, name: string): ClientEvent
-	local remote = waitFor(self._folder, name, self._timeout, "Remote")
+-- `level` is the error level of the public method's caller, counted from
+-- the public method (so 2 for a direct call).
+local function findEvent(self: any, name: string, level: number): any
+	local remote = waitFor(self._folder, name, self._timeout, "Remote", level + 2)
 	if not (remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent")) then
-		error(PREFIX .. ("'%s' is a %s, not an event"):format(name, remote.ClassName), 2)
+		error(PREFIX .. ("'%s' is a %s, not an event"):format(name, remote.ClassName), level + 1)
 	end
-	local event = setmetatable({ Name = name, _remote = remote, _connections = {} }, ClientEventClass)
-	table.insert(self._events, event)
-	return (event :: any) :: ClientEvent
+	-- The client only holds an event while it has connections (see Connect),
+	-- so events that are looked up and dropped can be collected.
+	return setmetatable(
+		{ Name = name, _remote = remote, _connections = {}, _pruneAt = 16, _client = self },
+		ClientEventClass
+	)
+end
+
+local function findFunction(self: any, name: string, options: FunctionOptions?, level: number): any
+	local remote = waitFor(self._folder, name, self._timeout, "Remote", level + 2)
+	if not remote:IsA("RemoteFunction") then
+		error(PREFIX .. ("'%s' is a %s, not a function"):format(name, remote.ClassName), level + 1)
+	end
+	return newFunction(name, remote, options, level + 2)
+end
+
+local function checkContract(self: any, endpoint: any, kind: "Event" | "Function", level: number)
+	if not Contract.is(endpoint, kind) then
+		error(PREFIX .. ("%sOf expects a Contract.%s from Contract.define"):format(kind, string.lower(kind)), level + 1)
+	end
+	if endpoint.Namespace ~= self.Namespace then
+		error(
+			PREFIX
+				.. ("'%s' belongs to namespace '%s', not '%s'"):format(
+					endpoint.Name,
+					endpoint.Namespace,
+					self.Namespace
+				),
+			level + 1
+		)
+	end
+end
+
+function ClientClass.Event(self: any, name: string): ClientEvent
+	return findEvent(self, name, 2)
 end
 
 function ClientClass.Function(self: any, name: string, options: FunctionOptions?): ClientFunction
-	local remote = waitFor(self._folder, name, self._timeout, "Remote")
-	if not remote:IsA("RemoteFunction") then
-		error(PREFIX .. ("'%s' is a %s, not a function"):format(name, remote.ClassName), 2)
-	end
-	return newFunction(name, remote, options, 3)
+	return findFunction(self, name, options, 2)
+end
+
+--- The event a contract describes (the same object `Event` returns).
+function ClientClass.EventOf(self: any, endpoint: any): any
+	checkContract(self, endpoint, "Event", 2)
+	return findEvent(self, endpoint.Name, 2)
+end
+
+--- The function a contract describes (the same object `Function` returns).
+function ClientClass.FunctionOf(self: any, endpoint: any, options: FunctionOptions?): any
+	checkContract(self, endpoint, "Function", 2)
+	return findFunction(self, endpoint.Name, options, 2)
 end
 
 --- Disconnects every handler connected through this client.
 function ClientClass.Destroy(self: any)
-	for _, event in self._events do
+	local events = {}
+	for event in self._events do
+		table.insert(events, event)
+	end
+	for _, event in events do
 		event:Destroy()
 	end
-	table.clear(self._events)
+end
+
+local function newClient(namespace: string, folder: Instance, timeout: number): Client
+	local self = setmetatable({
+		Namespace = namespace,
+		_folder = folder,
+		_timeout = timeout,
+		-- Events that have connections (event -> true).
+		_events = {},
+	}, ClientClass)
+	return (self :: any) :: Client
 end
 
 local Client = {}
@@ -227,15 +342,25 @@ function Client.new(namespace: string, options: ClientOptions?): Client
 		error(PREFIX .. "Namespace must be a non-empty string", 2)
 	end
 	local timeout = checkTimeout(options and options.Timeout, 3)
-	local parent = (options and options.Parent) or waitFor(ReplicatedStorage, ROOT_FOLDER_NAME, timeout, "Folder")
-	local folder = waitFor(parent, namespace, timeout, "Namespace")
-	local self = setmetatable({
-		Namespace = namespace,
-		_folder = folder,
-		_timeout = timeout,
-		_events = {},
-	}, ClientClass)
-	return (self :: any) :: Client
+	local parent = (options and options.Parent) or waitFor(ReplicatedStorage, ROOT_FOLDER_NAME, timeout, "Folder", 3)
+	local folder = waitFor(parent, namespace, timeout, "Namespace", 3)
+	return newClient(namespace, folder, timeout)
+end
+
+--- Internal: a client for `folder` without the environment check, so tests
+--- running on a server can look up remotes and exercise Destroy.
+function Client._newClient(namespace: string, folder: Instance, timeout: number?): Client
+	return newClient(namespace, folder, timeout or DEFAULT_TIMEOUT)
+end
+
+--- Internal: an event of `client` over any object with an OnClientEvent
+--- signal (a BindableEvent's Event, in tests), since a server can't connect
+--- to a real RemoteEvent's OnClientEvent.
+function Client._newEvent(client: Client, name: string, remote: any): ClientEvent
+	return setmetatable(
+		{ Name = name, _remote = remote, _connections = {}, _pruneAt = 16, _client = client },
+		ClientEventClass
+	) :: any
 end
 
 --- Internal: wraps any object with an InvokeServer method. Used by tests to

@@ -22,11 +22,27 @@
 
 local Util = require(script.Parent.Util)
 
+--- The in-memory storage behind one or more MemoryAdapters.
+export type Database = { [string]: any }
+
 export type Options = {
 	--- Share one database between adapters to simulate several servers.
-	Database: any?,
+	Database: Database?,
 	--- Seconds each load/save waits, to simulate network latency.
 	Latency: number?,
+}
+
+--- A Data adapter (pass it as Config.Adapter) plus test helpers.
+export type MemoryAdapter = {
+	Open: (self: MemoryAdapter, name: string, template: { [any]: any }) -> Util.Backend,
+	--- Makes the next `Loads` session starts and `Saves` saves fail.
+	SimulateFailures: (self: MemoryAdapter, failures: { Loads: number?, Saves: number? }) -> (),
+	--- A copy of the stored data for a key (nil if none).
+	Peek: (self: MemoryAdapter, name: string, key: string) -> any,
+	--- Stores data for a key directly, as if saved by an older game version.
+	Write: (self: MemoryAdapter, name: string, key: string, data: any) -> (),
+	--- Whether a live session currently owns the key.
+	IsLocked: (self: MemoryAdapter, name: string, key: string) -> boolean,
 }
 
 local MAX_SAVE_ATTEMPTS = 3
@@ -176,18 +192,19 @@ end
 
 local MemoryAdapter = {}
 
-function MemoryAdapter.newDatabase(): any
+function MemoryAdapter.newDatabase(): Database
 	return {}
 end
 
-function MemoryAdapter.new(options: Options?): any
+function MemoryAdapter.new(options: Options?): MemoryAdapter
 	local opts: Options = options or {}
-	return setmetatable({
+	local adapter = setmetatable({
 		_database = opts.Database or MemoryAdapter.newDatabase(),
 		_latency = opts.Latency or 0,
 		_failLoads = 0,
 		_failSaves = 0,
 	}, AdapterClass)
+	return (adapter :: any) :: MemoryAdapter
 end
 
 return table.freeze(MemoryAdapter)

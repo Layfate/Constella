@@ -1,6 +1,6 @@
 # Constella documentation
 
-Reference pages for every module in Constella v0.3.7.
+Reference pages for every module in Constella v0.4.0.
 
 ## Architecture
 
@@ -36,6 +36,7 @@ Reference pages for every module in Constella v0.3.7.
 
 - [Benchmarks](Benchmarks.md): measured results against sleitnick/signal, sleitnick/trove and plain Roblox approaches.
 - [Roadmap](Roadmap.md): what's done and what comes next.
+- [Implementation roadmap](ImplementationRoadmap.md): the plan for 0.3.8 to 0.6.0, with the tests and benchmarks each change needs.
 - [Changelog](https://github.com/Layfate/Constella/blob/main/CHANGELOG.md)
 - [Contributing](https://github.com/Layfate/Constella/blob/main/CONTRIBUTING.md): setup, tests and conventions.
 

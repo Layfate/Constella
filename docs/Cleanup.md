@@ -40,7 +40,7 @@ cleanup:Destroy()
 | `cleanup:Get(key)` | |
 | `cleanup:Remove(keyOrResource)` | Cleans one resource now. Returns `false` if it wasn't found. Keys are checked first |
 | `cleanup:Detach(keyOrResource)` | Stops tracking without cleaning. Returns the resource |
-| `cleanup:Connect(signal, fn)` | Connects and tracks. Works with RBXScriptSignal and Constella Signal |
+| `cleanup:Connect(signal, fn)` | Connects and tracks. Works with RBXScriptSignal, Constella Signal and any object with the same `Connect` method. Typed: `fn`'s parameters are checked against the signal's (`cleanup:Connect(Players.PlayerAdded, function(player: Player) ... end)`) |
 | `cleanup:Extend()` | A child Cleanup that's destroyed along with this one |
 | `cleanup:AttachToInstance(instance)` | Destroys this Cleanup when `instance.Destroying` fires |
 | `cleanup:Clean()` | Cleans everything. The Cleanup stays usable |

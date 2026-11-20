@@ -110,13 +110,17 @@ end
 
 function Bench.leakCheck(build: () -> ({ any }, () -> ()), timeoutSeconds: number?): (number, number)
 	local tracked: { [any]: true } = setmetatable({} :: any, { __mode = "k" })
-	do
+	-- Built and released in a call of its own: a `do` block here would leave
+	-- its registers (the loop variable holds the last object) alive in this
+	-- frame while it waits, so one object could never be collected.
+	local function fill()
 		local objects, release = build()
 		for _, object in objects do
 			tracked[object] = true
 		end
 		release()
 	end
+	fill()
 
 	local function alive(): number
 		local count = 0

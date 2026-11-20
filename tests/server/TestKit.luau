@@ -177,6 +177,48 @@ function TestKit.run(specs: { Spec }, Constella: any, options: { Silent: boolean
 			return next(weak) == nil
 		end
 
+		--- Leak check: `build()` returns the objects to watch and, optionally,
+		--- a function that releases them. The objects are tracked weakly,
+		--- released, and every strong reference the check holds is dropped;
+		--- returns how many are still alive once the collector has had
+		--- `timeout` seconds (default 10). 0 means nothing leaked. Anything
+		--- `build` keeps (an owner that stays alive) must not reference them.
+		function t.leaked(build: () -> ({ any }, (() -> ())?), timeout: number?): number
+			local weak = setmetatable({}, { __mode = "k" })
+			-- Built and released in a call of its own, so no register of this
+			-- frame still points at the objects.
+			local function fill()
+				local objects, release = build()
+				for _, object in objects do
+					weak[object] = true
+				end
+				if release then
+					release()
+				end
+			end
+			fill()
+			t.collected(weak, timeout)
+			local alive = 0
+			for _ in weak do
+				alive += 1
+			end
+			return alive
+		end
+
+		--- A stand-in Player for server-side tests: Name, UserId, Parent
+		--- (truthy while in the game) and Kick, which records its message
+		--- in `Kicked`. `player:Leave()` clears Parent, as leaving does.
+		function t.fakePlayer(name: string?, userId: number?): any
+			local player = { Name = name or "Tester", UserId = userId or 1, Parent = true, Kicked = nil :: string? }
+			function player.Kick(self: any, message: string?)
+				self.Kicked = message or ""
+			end
+			function player.Leave(self: any)
+				self.Parent = nil
+			end
+			return player
+		end
+
 		--- Records a test as skipped (for example when an optional
 		--- dependency is not installed) instead of running it.
 		function t.skip(name: string, reason: string)

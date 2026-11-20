@@ -27,6 +27,7 @@ local RunService = game:GetService("RunService")
 
 local Signal = require(script.Parent.Parent.Signal)
 local Check = require(script.Parent.Check)
+local Contract = require(script.Parent.Contract)
 local Payload = require(script.Parent.Payload)
 local RateLimiter = require(script.Parent.RateLimiter)
 
@@ -54,6 +55,10 @@ export type EndpointConfig = {
 	Unreliable: boolean?,
 }
 
+-- Type only: `typeof` in a type annotation isn't evaluated at runtime, so
+-- Network still doesn't load Debug unless you pass it a logger.
+type Logger = typeof(require(script.Parent.Parent.Debug).Logger.new(""))
+
 export type ServerOptions = {
 	--- Concurrent requests per player across all endpoints. Defaults to 16.
 	MaxInFlightPerPlayer: number?,
@@ -68,7 +73,7 @@ export type ServerOptions = {
 	--- Receives handler and Authorize errors. Defaults to re-raising on a new thread.
 	OnError: ((message: string) -> ())?,
 	--- A Constella.Debug logger; rejections are logged at Warn.
-	Logger: any?,
+	Logger: Logger?,
 	--- Time source for rate limiting (tests). Defaults to os.clock.
 	Clock: (() -> number)?,
 }
@@ -95,11 +100,51 @@ export type ServerFunction = {
 	Destroy: (self: ServerFunction) -> (),
 }
 
+--- Server-side settings for a contract endpoint. The Schema comes from the
+--- contract; `Authorize` receives the contract's argument types.
+export type ContractConfig<T...> = {
+	RateLimit: (RateLimiter.Config | boolean)?,
+	MaxPayloadBytes: number?,
+	Authorize: ((player: Player, T...) -> boolean)?,
+	Unreliable: boolean?,
+}
+
+--- A contract event on the server: `ServerEvent` with typed arguments.
+export type TypedServerEvent<T...> = {
+	Name: string,
+	Connect: (self: TypedServerEvent<T...>, handler: (player: Player, T...) -> ()) -> Signal.Connection,
+	Fire: (self: TypedServerEvent<T...>, player: Player, T...) -> (),
+	FireAll: (self: TypedServerEvent<T...>, T...) -> (),
+	FireList: (self: TypedServerEvent<T...>, players: { Player }, T...) -> (),
+	FireExcept: (self: TypedServerEvent<T...>, except: Player, T...) -> (),
+	Destroy: (self: TypedServerEvent<T...>) -> (),
+}
+
+--- A contract function on the server: `ServerFunction` with typed
+--- arguments and results.
+export type TypedServerFunction<A..., R...> = {
+	Name: string,
+	SetHandler: (self: TypedServerFunction<A..., R...>, handler: (player: Player, A...) -> R...) -> (),
+	Destroy: (self: TypedServerFunction<A..., R...>) -> (),
+}
+
 export type Server = {
 	Namespace: string,
 	Folder: Folder,
 	Event: (self: Server, name: string, config: EndpointConfig?) -> ServerEvent,
 	Function: (self: Server, name: string, config: EndpointConfig) -> ServerFunction,
+	--- Creates the event a contract describes, with its Schema.
+	EventOf: <T...>(
+		self: Server,
+		endpoint: Contract.Event<T...>,
+		config: ContractConfig<T...>?
+	) -> TypedServerEvent<T...>,
+	--- Creates the function a contract describes, with its Schema.
+	FunctionOf: <A..., R...>(
+		self: Server,
+		endpoint: Contract.Function<A..., R...>,
+		config: ContractConfig<A...>?
+	) -> TypedServerFunction<A..., R...>,
 	GetStats: (self: Server) -> { [string]: EndpointStats },
 	Destroy: (self: Server) -> (),
 }
@@ -507,10 +552,11 @@ end
 local ServerClass = {}
 ServerClass.__index = ServerClass
 
---- Creates a RemoteEvent. Pass a Schema to accept client fires.
-function ServerClass.Event(self: any, name: string, config: EndpointConfig?): ServerEvent
+-- `level` is the error level of the public method's caller, counted from
+-- the public method (so 2 for a direct call).
+local function addEvent(self: any, name: string, config: any, level: number): any
 	local className = if config and config.Unreliable then "UnreliableRemoteEvent" else "RemoteEvent"
-	local endpoint = createEndpoint(self, ServerEventClass, "Event", name, config, className, 3)
+	local endpoint = createEndpoint(self, ServerEventClass, "Event", name, config, className, level + 2)
 	endpoint._signal = Signal.new({
 		OnError = function(message: string)
 			self._onError(PREFIX .. ("Handler for '%s' failed: %s"):format(name, message))
@@ -523,17 +569,75 @@ function ServerClass.Event(self: any, name: string, config: EndpointConfig?): Se
 	return endpoint
 end
 
---- Creates a RemoteFunction answered by SetHandler. A Schema is required.
-function ServerClass.Function(self: any, name: string, config: EndpointConfig): ServerFunction
+local function addFunction(self: any, name: string, config: any, level: number): any
 	if type(config) ~= "table" or config.Schema == nil then
-		error(PREFIX .. ("Function '%s' needs a Schema (use {} for no arguments)"):format(tostring(name)), 2)
+		error(PREFIX .. ("Function '%s' needs a Schema (use {} for no arguments)"):format(tostring(name)), level + 1)
 	end
-	local endpoint = createEndpoint(self, ServerFunctionClass, "Function", name, config, "RemoteFunction", 3)
+	local endpoint = createEndpoint(self, ServerFunctionClass, "Function", name, config, "RemoteFunction", level + 2)
 	endpoint._remote.OnServerInvoke = function(player: Player, ...: any)
 		return endpoint:_invoke(player, ...)
 	end
 	endpoint._remote.Parent = self.Folder
 	return endpoint
+end
+
+-- Checks a contract endpoint and builds the config for it: the server's
+-- settings plus the contract's Schema.
+local function contractConfig(self: any, endpoint: any, kind: "Event" | "Function", config: any, level: number): any
+	if not Contract.is(endpoint, kind) then
+		error(PREFIX .. ("%sOf expects a Contract.%s from Contract.define"):format(kind, string.lower(kind)), level + 1)
+	end
+	if endpoint.Namespace ~= self.Namespace then
+		error(
+			PREFIX
+				.. ("'%s' belongs to namespace '%s', not '%s'"):format(
+					endpoint.Name,
+					endpoint.Namespace,
+					self.Namespace
+				),
+			level + 1
+		)
+	end
+	if config ~= nil and type(config) ~= "table" then
+		error(PREFIX .. ("%s '%s' config must be a table"):format(kind, endpoint.Name), level + 1)
+	end
+	if config ~= nil and config.Schema ~= nil then
+		error(
+			PREFIX
+				.. ("%s '%s' takes its Schema from the contract; remove Schema from the config"):format(
+					kind,
+					endpoint.Name
+				),
+			level + 1
+		)
+	end
+	local resolved: any = if config then table.clone(config) else {}
+	resolved.Schema = endpoint.Schema
+	return resolved
+end
+
+--- Creates a RemoteEvent. Pass a Schema to accept client fires.
+function ServerClass.Event(self: any, name: string, config: EndpointConfig?): ServerEvent
+	return addEvent(self, name, config, 2)
+end
+
+--- Creates a RemoteFunction answered by SetHandler. A Schema is required.
+function ServerClass.Function(self: any, name: string, config: EndpointConfig): ServerFunction
+	return addFunction(self, name, config, 2)
+end
+
+--- Creates the event a contract describes. It is the same endpoint
+--- `Event` creates, behind the same gates, with the contract's Schema.
+function ServerClass.EventOf(self: any, endpoint: any, config: any?): any
+	local resolved = contractConfig(self, endpoint, "Event", config, 2)
+	return addEvent(self, endpoint.Name, resolved, 2)
+end
+
+--- Creates the function a contract describes. It is the same endpoint
+--- `Function` creates, behind the same gates, with the contract's Schema.
+function ServerClass.FunctionOf(self: any, endpoint: any, config: any?): any
+	local resolved = contractConfig(self, endpoint, "Function", config, 2)
+	return addFunction(self, endpoint.Name, resolved, 2)
 end
 
 --- Accepted / rejected counts per endpoint (a copy).

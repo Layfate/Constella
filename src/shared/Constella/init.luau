@@ -12,7 +12,7 @@
 	`Constella.Store<T>`, ...); see the end of this file.
 ]=]
 
-local VERSION = "0.3.7"
+local VERSION = "0.4.0"
 local AUTHOR = "Zense"
 
 -- Modules shipped in this version (key -> child ModuleScript name).
@@ -119,6 +119,7 @@ local Check = require(script.Network.Check)
 local RateLimiter = require(script.Network.RateLimiter)
 local NetworkServer = require(script.Network.Server)
 local NetworkClient = require(script.Network.Client)
+local Contract = require(script.Network.Contract)
 local Replication = require(script.Replication)
 local Store = require(script.Data.Store)
 local MemoryAdapter = require(script.Data.MemoryAdapter)
@@ -175,6 +176,13 @@ export type NetworkClientOptions = NetworkClient.ClientOptions
 export type ClientEvent = NetworkClient.ClientEvent
 export type ClientFunction = NetworkClient.ClientFunction
 export type FunctionOptions = NetworkClient.FunctionOptions
+export type ContractEvent<T...> = Contract.Event<T...>
+export type ContractFunction<A..., R...> = Contract.Function<A..., R...>
+export type ContractConfig<T...> = NetworkServer.ContractConfig<T...>
+export type TypedServerEvent<T...> = NetworkServer.TypedServerEvent<T...>
+export type TypedServerFunction<A..., R...> = NetworkServer.TypedServerFunction<A..., R...>
+export type TypedClientEvent<T...> = NetworkClient.TypedClientEvent<T...>
+export type TypedClientFunction<A..., R...> = NetworkClient.TypedClientFunction<A..., R...>
 
 -- Replication
 export type ReplicationServer = Replication.ReplicationServer
@@ -189,6 +197,12 @@ export type StoreConfig<T = { [string]: any }> = Store.Config<T>
 export type StoreStats = Store.Stats
 export type Profile<T = { [string]: any }> = Store.Profile<T>
 export type DataAdapter = Store.Adapter
+export type DataBackend = Store.Backend
+export type DataSession = Store.Session
+export type DataSessionOptions = Store.SessionOptions
+export type MutateOptions = Store.MutateOptions
+export type MemoryAdapter = MemoryAdapter.MemoryAdapter
+export type MemoryAdapterDatabase = MemoryAdapter.Database
 export type DataError = Store.DataError
 export type DataErrorKind = Store.ErrorKind
 export type MemoryAdapterOptions = MemoryAdapter.Options

@@ -55,7 +55,12 @@ function RateLimiterClass.Forget(self: any, key: any)
 	self._buckets[key] = nil
 end
 
+--- Tokens `key` could spend now. Asking about a key that hasn't consumed
+--- anything returns the full capacity without storing a bucket for it.
 function RateLimiterClass.GetTokens(self: any, key: any): number
+	if self._buckets[key] == nil then
+		return self._capacity
+	end
 	return refill(self, key).tokens
 end
 

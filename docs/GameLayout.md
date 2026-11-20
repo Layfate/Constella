@@ -10,7 +10,7 @@ ReplicatedStorage
 │   └── Constella             the library
 └── Shared                    seen by the server AND every client
     ├── Items                 public data both sides read (catalog, prices)
-    └── Net                   remote and replication names
+    └── Net                   the Shop Network contract and replication names
 
 ServerScriptService
 └── Server
@@ -88,12 +88,14 @@ The names match the modules' own (`Context`, `Store<T>`, `Value<T>`, `Logger`), 
 
 With Wally, run [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) after `wally install` so the link file re-exports them (see [Installation](https://github.com/Layfate/Constella#installation)). The release download and the source build need nothing extra.
 
-Keep listener types by connecting through the signal: `context.Cleanup:Add(store.Loaded:Connect(function(player, profile) ... end))`. `Cleanup:Connect(signal, fn)` accepts any signal, so its callback is untyped.
+Listener types are kept either way: `context.Cleanup:Connect(store.Loaded, function(player, profile) ... end)` checks the callback against the signal, as does `context.Cleanup:Add(store.Loaded:Connect(...))`.
+
+Remotes are typed through a [Network contract](Network.md#contracts-typed-endpoints) in `Shared/Net`: the server's handler, the client's call and the declaration are checked against each other, so renaming an argument's type on one side is a type error on the other.
 
 ## Security rules of thumb
 
 1. **The server decides.** The client sends *what it wants* ("buy Sword"), never *what happened* ("I now have 90 coins").
 2. **Validate every remote.** Give each [Network](Network.md) endpoint a `Schema` and a `RateLimit`. A schema of `Check.literal(table.unpack(Items.Ids))` rejects unknown items before your handler runs.
-3. **Share names, not rules.** `Shared/Net` holds remote names. Schemas, rate limits, prices you charge and rewards you grant are applied on the server.
+3. **Share shapes, not rules.** `Shared/Net` holds the Shop contract: endpoint names, argument Schemas and types. A Schema only checks the shape of a request, so clients seeing it is harmless. Rate limits, prices you charge, rewards you grant and anything else that needs server-only knowledge are applied on the server, in the endpoint config, `Authorize` or the handler, never in the shared contract.
 4. **Secrets live in `ServerStorage` or `ServerScriptService`.** Anything in `ReplicatedStorage` is public.
 5. **Replicate deliberately.** [Replication](Replication.md) only sends what a service shares, and `ShareWith(player, ...)` keeps per-player values private.

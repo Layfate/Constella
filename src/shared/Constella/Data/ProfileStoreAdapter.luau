@@ -38,6 +38,8 @@
 	data. ProfileStore's mock StartSessionAsync ignores the Cancel callback.
 ]=]
 
+local Util = require(script.Parent.Util)
+
 export type Options = {
 	--- Use ProfileStore's mock store (in memory, never touches real data).
 	Mock: boolean?,
@@ -186,7 +188,7 @@ end
 local ProfileStoreAdapter = {}
 
 --- `profileStoreModule` is the result of require(ProfileStore).
-function ProfileStoreAdapter.new(profileStoreModule: any, options: Options?): any
+function ProfileStoreAdapter.new(profileStoreModule: any, options: Options?): Util.Adapter
 	if type(profileStoreModule) ~= "table" or type(profileStoreModule.New) ~= "function" then
 		error("[Constella.Data] ProfileStoreAdapter.new expects the ProfileStore module (require(ProfileStore))", 2)
 	end
@@ -194,11 +196,12 @@ function ProfileStoreAdapter.new(profileStoreModule: any, options: Options?): an
 	if type(saveTimeout) ~= "number" or not (saveTimeout > 0) or saveTimeout == math.huge then
 		error("[Constella.Data] SaveTimeout must be a positive number of seconds", 2)
 	end
-	return setmetatable({
+	local adapter = setmetatable({
 		_profileStore = profileStoreModule,
 		_mock = options ~= nil and options.Mock == true,
 		_saveTimeout = saveTimeout,
 	}, AdapterClass)
+	return (adapter :: any) :: Util.Adapter
 end
 
 return table.freeze(ProfileStoreAdapter)

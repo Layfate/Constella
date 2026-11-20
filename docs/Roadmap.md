@@ -72,12 +72,25 @@ Still verification work. No new modules.
 - **Signal:** ✅ 144 bytes per connection instead of 160, compared like-for-like with sleitnick/signal (which is still faster).
 - **Soak:** harness shipped; a multi-hour result is not published yet.
 
+## v0.4.0 — typed contracts and typed data · released 2026-11-20
+
+Phases 0, 1 and 2 of the [implementation roadmap](ImplementationRoadmap.md).
+
+- **Network contracts:** ✅ endpoints declared once in a shared module; server handlers, `Authorize` and client calls are type-checked against the same declaration. At runtime the same endpoint behind the same gates, at the same cost per request (measured).
+- **Typed Data writes:** ✅ `profile:Mutate(fn)` with `Data` typed; `Validate` on load (never-overwrite path); opt-in `CheckWrites` for DataStore-safe values.
+- **Leaks:** ✅ client events and their disconnected connections no longer accumulate; `RateLimiter:GetTokens` no longer stores unknown keys; the benchmark leak check no longer holds its last object.
+- **Verification:** ✅ type tests that must fail (11 cases), a lazy-loading test that enforces the dependency table, and 84 more tests (387). A hostile real client exercises contract endpoints.
+- **Types:** ✅ typed `Logger` options, `Cleanup:Connect` callbacks and Data backends; 84 root types.
+
 ## Next
+
+The plan for 0.5.0 and 0.6.0 (a shared Zone scheduler, optional diagnostics, interest-based Replication) is in the [implementation roadmap](ImplementationRoadmap.md). The items below come first.
 
 - **Soak:** publish a multi-hour soak result with its control run.
 - **Pool:** measure memory over long sessions.
 - **Replication Delta:** run the Play-mode test (`tests/client/ReplicationIntegration.client.luau`) in Studio with real clients.
-- **Typed listeners and profile keys:** `Cleanup:Connect` types its callback as `(...any)`, and `profile:Set` accepts any key and value.
+- **Characters-on load phase:** real clients with moving characters, needed to measure Zone and interest Replication.
+- **Profile keys:** `profile:Get`/`Set` still take any string key; `Mutate` is the typed path until the new type solver allows typing keys (`keyof<T>`).
 
 ## Toward 1.0
 

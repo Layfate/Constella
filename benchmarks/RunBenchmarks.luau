@@ -301,6 +301,34 @@ return function(options: { Runs: number?, Packages: { Package }?, Groups: { stri
 			end
 		end)
 
+		-- The same endpoint created from a contract (0.4.0). It must cost the
+		-- same: at runtime it is the same endpoint behind the same gates.
+		local hasContracts = pcall(function()
+			return Network.Contract
+		end)
+		if hasContracts then
+			local Contract = Network.Contract
+			local shop = Contract.define({
+				Namespace = "BenchmarkContract",
+				Buy = Contract.event(schema),
+			})
+			local contractServer =
+				keep(Network.Server.new("BenchmarkContract", { Parent = Instance.new("Folder"), OnError = noop }))
+			local contractBuy = contractServer:EventOf(shop.Buy, { RateLimit = { Count = 1e9, Per = 1 } })
+			contractBuy:Connect(noop)
+			case(
+				"Network",
+				"Accept a valid request (all checks)",
+				"Constella.Network, contract endpoint" .. suffix,
+				20000,
+				function(n)
+					for _ = 1, n do
+						contractBuy:_receive(player, "Sword", 2, { Note = "gift" })
+					end
+				end
+			)
+		end
+
 		local loot = Constella.Random.lootTable(entries)
 		case(
 			"Random",
@@ -429,6 +457,91 @@ return function(options: { Runs: number?, Packages: { Package }?, Groups: { stri
 				local fake = { Name = "Bench", UserId = nextUserId, Parent = true, Kick = noop }
 				store:LoadAsync(fake):Await()
 				store:Release(fake)
+			end
+		end)
+
+		-- Writing one key of a loaded 20-key profile, four ways. Set and
+		-- Update exist in every build; Mutate and CheckWrites are 0.4.0.
+		local wideTemplate: { [string]: any } = { Owned = {} }
+		for index = 1, 19 do
+			wideTemplate["Stat" .. index] = index
+		end
+		local function loadedProfile(storeName: string, extra: { [string]: any }?): any
+			local config: { [string]: any } = {
+				Name = storeName,
+				Template = wideTemplate,
+				Adapter = Data.MemoryAdapter.new(),
+				KickOnFailure = false,
+				OnError = noop,
+			}
+			for key, value in (extra or {}) :: { [string]: any } do
+				config[key] = value
+			end
+			local wideStore = Data.Store.new(config :: any)
+			nextUserId += 1
+			local fake = { Name = "Bench", UserId = nextUserId, Parent = true, Kick = noop }
+			local _, loadedOne = wideStore:LoadAsync(fake):Await()
+			loadedOne.Changed:Connect(noop)
+			return loadedOne
+		end
+		local wide = loadedProfile("BenchWide")
+		local items40 = {}
+		for index = 1, 40 do
+			items40[index] = { Id = "Item" .. index, Count = index }
+		end
+		local counter = 0
+		case("Data", "Write one key of a 20-key profile", "`profile:Set`" .. suffix, 20000, function(n)
+			for _ = 1, n do
+				counter += 1
+				wide:Set("Stat1", counter)
+			end
+		end)
+		case("Data", "Write one key of a 20-key profile", "`profile:Update`" .. suffix, 20000, function(n)
+			for _ = 1, n do
+				wide:Update("Stat1", function(value)
+					return value + 1
+				end)
+			end
+		end)
+		if wide.Mutate then
+			case("Data", "Write one key of a 20-key profile", "`profile:Mutate`" .. suffix, 20000, function(n)
+				for _ = 1, n do
+					wide:Mutate(function(data)
+						data.Stat1 += 1
+					end)
+				end
+			end)
+			local only = { Keys = { "Stat1" } }
+			case(
+				"Data",
+				"Write one key of a 20-key profile",
+				"`profile:Mutate` with `Keys`" .. suffix,
+				20000,
+				function(n)
+					for _ = 1, n do
+						wide:Mutate(function(data)
+							data.Stat1 += 1
+						end, only)
+					end
+				end
+			)
+			local checked = loadedProfile("BenchChecked", { CheckWrites = true })
+			case(
+				"Data",
+				"Set a 40-item inventory table",
+				"`profile:Set` with `CheckWrites`" .. suffix,
+				5000,
+				function(n)
+					for _ = 1, n do
+						checked:Set("Owned", table.clone(items40))
+					end
+				end
+			)
+		end
+		local unchecked = loadedProfile("BenchPlainTable")
+		case("Data", "Set a 40-item inventory table", "`profile:Set`" .. suffix, 5000, function(n)
+			for _ = 1, n do
+				unchecked:Set("Owned", table.clone(items40))
 			end
 		end)
 

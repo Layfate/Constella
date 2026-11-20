@@ -36,7 +36,7 @@ function HudController.Start(_self: HudController, context: Constella.Context)
 	local playerState: PlayerStateController = context:Get("PlayerStateController")
 	local purchase = context.Cleanup
 		:Add(Constella.Network.Client.new(Net.Shop.Namespace))
-		:Function(Net.Shop.Purchase, { Timeout = 5 })
+		:FunctionOf(Net.Shop.Purchase, { Timeout = 5 })
 
 	local gui = context.Cleanup:Add(Instance.new("ScreenGui"))
 	gui.Name = "Hud"

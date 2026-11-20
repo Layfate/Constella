@@ -80,7 +80,7 @@ If *any* step fails, the session ends without the stored data being touched, the
 
 ## Changing data
 
-**Change data only with `profile:Set` and `profile:Update`.** Reading `profile.Data` directly is fine, but writing to it isn't:
+**Change data only with `profile:Mutate`, `profile:Set` and `profile:Update`.** Reading `profile.Data` directly is fine, but writing to it isn't:
 
 - A direct write skips the `Changed` signal, so anything listening (UI, replication) never hears about it.
 - A direct write skips the active-session check. After a session is lost, `Set` and `Update` raise an error, but a direct write just disappears with no error.
@@ -112,6 +112,47 @@ end)
 
 Prefer the copy when a listener needs the old value, for example to diff it. The identity rule for `Set` also applies to [State](State.md), whose `Update` has no in-place exception: give it a new table.
 
+### Typed writes with `Mutate`
+
+`Set` and `Update` take a key as a string, so the type checker can't check the key or the value. `Mutate` hands your function `profile.Data` with its real type, so both are checked:
+
+```lua
+profile:Mutate(function(data) -- data: PlayerData
+	data.Coins += price        -- a misspelt field or a string here is a type error
+	data.Owned[itemId] = true
+end)
+```
+
+Afterwards `Changed(key, new, old)` fires once for each top-level key that changed: a different value, an added key or a removed key. **A key that holds a table counts as changed whenever it's compared**, with the same table as new and old (like `Update`), because an edit inside it can't be seen from outside. That way listeners never miss an in-place edit. The cost is one `Changed` per table-valued key per call.
+
+- `profile:Mutate(fn, { Keys = { "Coins" } })` compares only the listed keys, in that order: it's faster on large profiles, and only those keys fire `Changed`. Edits to other keys are **not** reported, so list every key the function touches.
+- If `fn` raises, the changes it made before the error are still reported, then the error is re-raised.
+- Like `Update`, `Mutate` checks that the session is still active before and after `fn`. Don't yield in `fn`: if the session was lost meanwhile, `Mutate` raises and reports nothing.
+- Cost: on a 20-key profile, `Mutate` takes about 6× as long as `Set` for one key (3.4 µs against 0.57 µs in a local Studio benchmark), and about 2× with `Keys` (1.2 µs). That's plenty for game events; for a value written every frame, `Set` or `Keys` is cheaper ([Benchmarks](Benchmarks.md#040-against-037)).
+
+## Checking data
+
+Two optional checks, both off by default:
+
+**`Validate`** runs on every load, after migrations and reconciliation and before the profile is handed out. Pass a function `(data) -> (ok, reason?)`, for example a [Network.Check](Network.md#validators-networkcheck) validator. Data doesn't load Network: you pass the function in.
+
+```lua
+local Check = Constella.Network.Check
+local store = Data.Store.new({
+	Name = "PlayerData",
+	Template = { Coins = 0, Owned = {} },
+	Adapter = adapter,
+	Validate = Check.record({
+		Coins = Check.number(0),
+		Owned = Check.map(Check.string(), Check.boolean(), 500),
+	}),
+})
+```
+
+A failure follows the [never-overwrite](#never-overwrite-on-failure) path: the load fails as `CorruptData` with the reason, the session ends **without changing the stored data**, and the player is kicked (with `KickOnFailure`). A `Validate` that raises fails the load as `LoadFailed`. `Validate` never sees Constella's `_ConstellaVersion` key, so `Check.record` doesn't need to allow it.
+
+**`CheckWrites = true`** makes `Set`, `Update` and `Mutate` check that each written value can be saved to a DataStore, and raise at the write instead of failing at the next save. Accepted: nil, booleans, finite numbers, valid UTF-8 strings, buffers, and tables that are either arrays (keys 1 to n, no holes) or dictionaries with string keys, with no metatable, nested at most 32 levels. Instances, functions, Vector3 and other Roblox types, NaN and infinities, mixed or sparse tables, and non-string keys are refused, and the error names where the problem is (`Owned.Swords[2].Damage is a Vector3`). `Set` and `Update` check before writing. `Mutate`'s edits are already made in place, so it reports them through `Changed` and then raises. The check walks every written table, so a common setup is `CheckWrites = RunService:IsStudio()`: mistakes are caught while testing, at no cost on live servers.
+
 ## Versions and migrations
 
 - Data is stamped with `_ConstellaVersion`, a reserved key you can't use in your Template.
@@ -136,7 +177,7 @@ When the backend ends a session (for example the player joined another server, w
 
 | Member | Description |
 | --- | --- |
-| `Data.Store.new(config)` | `Name`, `Template`, `Adapter`, `Version?`, `Migrations?`, `LoadAttempts?` (3), `RetryDelay?` (1s, doubling), `KickOnFailure?`, `Key?(player)`, `Logger?`, `OnError?` |
+| `Data.Store.new(config)` | `Name`, `Template`, `Adapter`, `Version?`, `Migrations?`, `LoadAttempts?` (3), `RetryDelay?` (1s, doubling), `KickOnFailure?`, `Key?(player)`, `Logger?`, `OnError?`, `Validate?`, `CheckWrites?` (see [Checking data](#checking-data)) |
 | `store:LoadAsync(player)` | A Promise of the Profile. While loading it returns the same promise, and once loaded the same profile. Cancelling the promise clears that load entry and cooperatively stops the worker, which still releases any late session. A later call starts a fresh load |
 | `store:Get(player)` | The loaded profile, or nil |
 | `store:Release(player)` | Ends the session (the adapter does the final save). Cancels a load that's still in progress |
@@ -144,7 +185,8 @@ When the backend ends a session (for example the player joined another server, w
 | `store:Shutdown(budget = 20)` | Stops new loads, releases everyone, and waits at most `budget` seconds for pending loads, yielding migrations, late session cleanup and releases already saving. Returns whether everything finished in time. Work exceeding the budget continues cleanup in the background |
 | `store:GetStats()` | `{ Loaded, Loading, LoadsSucceeded, LoadsFailed, SessionsLost }`. Loading includes cancelled workers until their session cleanup finishes |
 | `store.Loaded(player, profile)` / `store.Released(player)` | Signals |
-| `profile.Data` | The live data table. Read it freely; change it only with `Set`/`Update` (see [Changing data](#changing-data)) |
+| `profile.Data` | The live data table. Read it freely; change it only with `Mutate`/`Set`/`Update` (see [Changing data](#changing-data)) |
+| `profile:Mutate(fn, { Keys? }?)` | Typed edit: `fn(data)` receives `Data` with its real type; `Changed` fires per changed top-level key (see [Typed writes](#typed-writes-with-mutate)) |
 | `profile:Get(key)` / `:Set(key, value)` / `:Update(key, fn)` | `Set`/`Update` fire `profile.Changed(key, new, old)` |
 | `profile:Save()` | Saves now and yields until the save is written. Returns false (and reports the error) if it fails or times out |
 | `profile:IsActive()` / `profile:Release()` | |
@@ -157,4 +199,4 @@ When the backend ends a session (for example the player joined another server, w
 | `Data.ProfileStoreAdapter.new(ProfileStore, { Mock?, SaveTimeout? }?)` | Production. `Mock = true` uses ProfileStore's in-memory mock store; `SaveTimeout` (30) caps how long Save and Release wait for the write |
 | `Data.MemoryAdapter.new({ Database?, Latency? })` | Studio and tests. **Not persistent.** Has `SimulateFailures({ Loads, Saves })`, `Peek`, `Write` and `IsLocked`. Share a `MemoryAdapter.newDatabase()` between adapters to simulate several servers |
 
-Any other backend can be used if it implements the same three-method contract that `MemoryAdapter` documents: `Open`, `StartSession`, and a session with `Data` / `Save` / `End` / `IsActive` / `OnSessionEnd`.
+Any other backend can be used if it implements the same contract, which is exported as types: `Constella.DataAdapter` (`Open(name, template)` returns a `DataBackend`), `Constella.DataBackend` (`StartSession(key, options?)` yields and returns a `DataSession`, or nil and a reason) and `Constella.DataSession` (`Data`, `Save`, `End`, `IsActive`, `OnSessionEnd`). Annotate your adapter with them and the type checker tells you what's missing. `ProfileStoreAdapter.new` returns a `DataAdapter`, and `MemoryAdapter.new` a `Constella.MemoryAdapter` (the adapter plus its test helpers).

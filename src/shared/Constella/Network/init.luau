@@ -5,6 +5,7 @@
 	- Network.Server  - server-only: creates and guards remotes
 	- Network.Client  - client-only: finds remotes the server created
 	- Network.Check   - validators for client input
+	- Network.Contract - typed endpoint declarations shared by server and client
 	- Network.RateLimiter, Network.Payload - building blocks used by Server
 
 	Each part loads on first access, so a client never runs server code.
@@ -16,6 +17,7 @@ export type Network = {
 	Server: typeof(require(script.Server)),
 	Client: typeof(require(script.Client)),
 	Check: typeof(require(script.Check)),
+	Contract: typeof(require(script.Contract)),
 	RateLimiter: typeof(require(script.RateLimiter)),
 	Payload: typeof(require(script.Payload)),
 }
@@ -24,6 +26,7 @@ local PARTS = {
 	Server = true,
 	Client = true,
 	Check = true,
+	Contract = true,
 	RateLimiter = true,
 	Payload = true,
 }

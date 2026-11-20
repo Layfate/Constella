@@ -63,7 +63,19 @@ jobs:
             --sourcemap=sourcemap.json \
             --definitions=@roblox="$RUNNER_TEMP/globalTypes.d.luau" \
             --base-luaurc=.luaurc \
+            --ignore="tests/types/fail/**" \
             src tests examples benchmarks
+
+      # Each file in tests/types/fail misuses a typed API and must produce
+      # exactly the error it declares, so a type that silently became `any`
+      # fails CI instead of passing unnoticed.
+      - name: Type tests that must fail (luau-lsp)
+        if: always()
+        run: |
+          python3 .github/scripts/check_types.py \
+            --luau-lsp luau-lsp \
+            --sourcemap sourcemap.json \
+            --definitions "$RUNNER_TEMP/globalTypes.d.luau"
 
       - name: Type check the starter template (luau-lsp, Roblox types)
         if: always()

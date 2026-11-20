@@ -29,7 +29,7 @@
 ```toml
 # wally.toml
 [dependencies]
-Constella = "layfate/constella@0.3.7"
+Constella = "layfate/constella@0.4.0"
 ```
 
 Also available as a ready-to-insert model file (**[download `Constella.rbxm`](https://github.com/Layfate/Constella/releases/latest)**) or with pesde (`pesde add zense/constella`). See [Installation](#installation).
@@ -54,7 +54,7 @@ Also available as a ready-to-insert model file (**[download `Constella.rbxm`](ht
 | | [Promise](https://github.com/Layfate/Constella/blob/main/docs/Promise.md) | Async chaining, cancellation, timeouts and retries |
 | | [Random](https://github.com/Layfate/Constella/blob/main/docs/Random.md) | Weighted rolls, loot tables and luck, with the math documented |
 | | [Debug](https://github.com/Layfate/Constella/blob/main/docs/Debug.md) | Structured logging and metrics, with almost no cost when switched off |
-| **Game systems** | [Network](https://github.com/Layfate/Constella/blob/main/docs/Network.md) | Server-owned remotes with validation, rate limits and payload caps |
+| **Game systems** | [Network](https://github.com/Layfate/Constella/blob/main/docs/Network.md) | Server-owned remotes with validation, rate limits and payload caps; typed contracts shared by server and client |
 | | [Replication](https://github.com/Layfate/Constella/blob/main/docs/Replication.md) | Server→client State, only when the server explicitly shares it |
 | | [Component](https://github.com/Layfate/Constella/blob/main/docs/Component.md) | Behaviour attached to CollectionService tags |
 | | [Pool](https://github.com/Layfate/Constella/blob/main/docs/Pool.md) | Bounded object reuse for projectiles and effects |
@@ -176,6 +176,8 @@ local ok, bought = buy:Invoke("Sword") -- ok is false on a rejection, rate limit
 print("Bought a sword:", ok and bought)
 ```
 
+To type a remote on both sides, declare it once in a shared [Network contract](https://github.com/Layfate/Constella/blob/main/docs/Network.md#contracts-typed-endpoints): the server's handler and the client's call are then checked against the same argument and result types.
+
 A complete demo game, with saved data, a coins UI and a shop, lives in [`src/server`](https://github.com/Layfate/Constella/tree/main/src/server) and [`src/client`](https://github.com/Layfate/Constella/tree/main/src/client). Each module also has a short example in [`examples/`](https://github.com/Layfate/Constella/tree/main/examples). To start a new game, copy the [starter template](https://github.com/Layfate/Constella/tree/main/template); [Game layout](https://github.com/Layfate/Constella/blob/main/docs/GameLayout.md) explains where everything goes.
 
 ## Installation
@@ -189,7 +191,7 @@ A complete demo game, with saved data, a coins UI and a shop, lives in [`src/ser
 
 ```toml
 [dependencies]
-Constella = "layfate/constella@0.3.7"
+Constella = "layfate/constella@0.4.0"
 ```
 
 Autocomplete works through Wally's `Packages/Constella` link file as installed. Every public type is exported from the root module (`Constella.Context`, `Constella.Store<T>`, `Constella.Value<T>` and so on). To use those type names in your own annotations, re-export them into the link files with [wally-package-types](https://github.com/JohnnyMorganz/wally-package-types) after every `wally install`:

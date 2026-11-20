@@ -30,7 +30,10 @@ export type Cleanup = {
 	Get: (self: Cleanup, key: any) -> any,
 	Remove: (self: Cleanup, keyOrResource: any) -> boolean,
 	Detach: (self: Cleanup, keyOrResource: any) -> any,
-	Connect: (self: Cleanup, signal: any, callback: (...any) -> ()) -> any,
+	--- Connects `callback` to `signal` (an RBXScriptSignal, a Constella Signal
+	--- or anything with the same Connect method) and tracks the connection.
+	--- The callback's parameters are checked against the signal's.
+	Connect: <T...>(self: Cleanup, signal: { Connect: (any, (T...) -> ()) -> any }, callback: (T...) -> ()) -> any,
 	Extend: (self: Cleanup) -> Cleanup,
 	AttachToInstance: (self: Cleanup, instance: Instance) -> any,
 	Clean: (self: Cleanup) -> (),
